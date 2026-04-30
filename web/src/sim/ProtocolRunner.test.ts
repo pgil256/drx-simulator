@@ -16,6 +16,7 @@ function freshStore(overrides: { maxPressure?: number; durationSec?: number; use
       maxLeft: overrides.maxLeft ?? 10,
       maxRight: overrides.maxRight ?? 10,
       usePulse: overrides.usePulse ?? false,
+      timeScale: 1,
     },
   });
 }

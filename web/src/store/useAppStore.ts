@@ -24,6 +24,7 @@ type SessionState = {
   maxLeft: number;
   maxRight: number;
   usePulse: boolean;
+  timeScale: number;
 };
 
 type UiState = {
@@ -62,6 +63,7 @@ export const useAppStore = create<AppState>((set) => ({
     maxLeft: 10,
     maxRight: 10,
     usePulse: false,
+    timeScale: 1,
   },
   ui: {
     page: 'home',

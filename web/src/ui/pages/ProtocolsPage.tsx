@@ -154,6 +154,15 @@ export function ProtocolsPage() {
               onChange={(v) => setSession({ maxRight: v })}
             />
           )}
+          <SettingSlider
+            label="Demo Speed"
+            value={session.timeScale}
+            unit="×"
+            min={1}
+            max={10}
+            step={0.5}
+            onChange={(v) => setSession({ timeScale: v })}
+          />
         </div>
 
         <div className="flex items-center justify-between gap-3">

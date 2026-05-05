@@ -98,6 +98,29 @@ export function DeviceModel() {
           chairFrame.position.x += horizontalWorldX - chairMidX;
         }
       }
+
+      // Hide utility hardware that clutters the silhouette but isn't part of
+      // the visible chair / boom / tray assembly. The CAD source includes
+      // every fastener and caster wheel — leaving them visible spreads the
+      // bounding box (so <Bounds> zooms out) and reads as floating debris
+      // from overhead. The reference CAD render hides these too.
+      const HIDE_NAME_PREFIXES = [
+        'Caster_wheel',
+        'Handle_1',
+        'Handle_2',
+        'Handle_3',
+        'Handle_bushing',
+        'Hex_Cap_Screw',
+        'Circular_Washer',
+        'Prevailing_Torque',
+        'Base_housing',
+        'Electrical_box',
+      ];
+      scene.traverse((obj: Object3D) => {
+        if (HIDE_NAME_PREFIXES.some((p) => obj.name.startsWith(p))) {
+          obj.visible = false;
+        }
+      });
     }
 
     axialBaseZRef.current = axialRef.current.position.z;

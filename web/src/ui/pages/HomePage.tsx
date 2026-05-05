@@ -15,11 +15,11 @@ export function HomePage() {
 
   return (
     <PageShell title="Welcome">
-      <p className="text-white/80 mb-5">
+      <p className="text-sm sm:text-base text-white/80 mb-4 sm:mb-5">
         DRX — computer-controlled knee decompression therapy. This is a browser-based simulator of
         the device. Pick a destination below to explore.
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3">
         {LINKS.map((link) => (
           <button
             key={link.page}

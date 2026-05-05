@@ -1,13 +1,10 @@
 import { useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
+import { Vector3 } from 'three';
 import type { Mesh, MeshStandardMaterial, Object3D } from 'three';
 import { useAppStore } from '../store/useAppStore';
 
-// Names as exported by the STEP→GLB pipeline (underscores replace the
-// original CAD-part spaces/colons). The two "Bent leg" groups are the
-// patient-leg supports that should follow the actuators.
-const LEG_NODE_NAMES = new Set(['Bent_leg1', 'Bent_leg_21']);
 const PRESSURE_MAX_LBS = 80;
 const GLOW_MAX_INTENSITY = 0.8;
 const PULSE_HZ = 1.5;
@@ -35,6 +32,7 @@ export function DeviceModel() {
   const horizontalBaseXRef = useRef(0);
 
   const strapMatsRef = useRef<MeshStandardMaterial[]>([]);
+  const alignmentAppliedRef = useRef(false);
 
   useEffect(() => {
     axialRef.current = scene.getObjectByName('axial_slider') ?? null;
@@ -48,61 +46,85 @@ export function DeviceModel() {
       return;
     }
 
+    // The GLB authors the chair frame and the actuator boom on different
+    // X axes — the chair midline sits ~0.146m left of where horizontal_pivot
+    // mounts, and lateral_pivot sits ~0.114m left of where the foot tray
+    // hangs. Real device photos show the chair, boom, and tray aligned
+    // on one axis, so we (a) shift the chair to align with the boom and
+    // (b) shift lateral_pivot to align its rotation axis with the tray.
+    //
+    // Guarded by a ref so HMR / Strict-Mode re-runs don't double-apply.
+    if (!alignmentAppliedRef.current) {
+      alignmentAppliedRef.current = true;
+      scene.updateMatrixWorld(true);
+
+      const tray = scene.getObjectByName('Traction_tray1') ?? axialRef.current;
+      const trayWorldX = new Vector3().setFromMatrixPosition(tray.matrixWorld).x;
+      const lateralWorldX = new Vector3().setFromMatrixPosition(
+        lateralRef.current.matrixWorld,
+      ).x;
+      const horizontalWorldX = new Vector3().setFromMatrixPosition(
+        horizontalRef.current.matrixWorld,
+      ).x;
+
+      // (a) align lateral_pivot.x with the tray. axial_slider.x compensates
+      // so the tray's world X stays put.
+      const pivotAlignDx = trayWorldX - lateralWorldX;
+      lateralRef.current.position.x += pivotAlignDx;
+      axialRef.current.position.x -= pivotAlignDx;
+
+      // (b) shift the chair frame so its midline lands on the boom mount
+      // point (horizontal_pivot.x). Computed from the four Vertical_leg_*
+      // groups, which form the rectangular chair base.
+      const chairFrame = scene.getObjectByName('Chair_Frame1');
+      if (chairFrame) {
+        const legNames = [
+          'Vertical_leg_11',
+          'Vertical_leg_12',
+          'Vertical_leg_21',
+          'Vertical_leg_22',
+        ];
+        const legXs: number[] = [];
+        const tmp = new Vector3();
+        for (const name of legNames) {
+          const leg = scene.getObjectByName(name);
+          if (leg) {
+            tmp.setFromMatrixPosition(leg.matrixWorld);
+            legXs.push(tmp.x);
+          }
+        }
+        if (legXs.length > 0) {
+          const chairMidX = (Math.min(...legXs) + Math.max(...legXs)) / 2;
+          chairFrame.position.x += horizontalWorldX - chairMidX;
+        }
+      }
+    }
+
     axialBaseZRef.current = axialRef.current.position.z;
     lateralBaseYRef.current = lateralRef.current.rotation.y;
     horizontalBaseXRef.current = horizontalRef.current.rotation.x;
 
-    // The raw GLB authors the patient-leg supports as children of
-    // Chair_Frame1 (siblings of the chair frame proper), so without
-    // intervention they stay static while the actuator boom and foot
-    // tray move — the leg pieces look detached. Reparent them under
-    // axial_slider so they tilt with horizontal, swing with lateral,
-    // and translate with axial. attach() preserves world position, so
-    // the legs stay where the GLB drew them at rest.
-    //
-    // Filter by parent name because the GLB has a name collision:
-    // Bent_leg_21 is BOTH the top-level leg group AND one of the
-    // ~35 individual mesh chunks inside Bent_leg1.
-    scene.updateMatrixWorld(true);
-    // Match either the still-static state (parent: Chair_Frame1) or the
-    // already-reparented state (parent: axial_slider) so the effect is
-    // idempotent under Strict-Mode double-invoke and HMR re-runs.
-    const legs: Object3D[] = [];
-    scene.traverse((obj) => {
-      if (
-        LEG_NODE_NAMES.has(obj.name) &&
-        (obj.parent?.name === 'Chair_Frame1' || obj.parent === axialRef.current)
-      ) {
-        legs.push(obj);
-      }
-    });
-    for (const leg of legs) {
-      if (leg.parent !== axialRef.current) axialRef.current.attach(leg);
-    }
-    if (legs.length === 0) {
-      console.warn('DeviceModel: no leg meshes found to reparent');
-    }
-
-    // Pulse-glow effect: tint every mesh inside the patient-leg groups.
-    // Each Bent_leg_* group exports as ~35 individual meshes named
-    // "Bent_leg", "Bent_leg_1", ..., so we walk the reparented groups
-    // and clone every descendant mesh's material.
+    // Pulse-glow effect: tint every mesh inside the foot tray (the moving
+    // piece where the cuff would press the patient's foot). Using the tray
+    // makes the glow visually align with where pressure is applied. The
+    // chair-frame "Bent_leg" pieces are static structural cradles and are
+    // intentionally not part of the glow.
+    const tray = scene.getObjectByName('Traction_tray1') ?? axialRef.current;
     const mats: MeshStandardMaterial[] = [];
-    for (const leg of legs) {
-      leg.traverse((obj: Object3D) => {
-        const mesh = obj as Mesh;
-        if (!mesh.isMesh) return;
-        const src = mesh.material as MeshStandardMaterial;
-        const cloned = src.clone();
-        cloned.emissive.setRGB(1, 0, 0);
-        cloned.emissiveIntensity = 0;
-        mesh.material = cloned;
-        mats.push(cloned);
-      });
-    }
+    tray.traverse((obj: Object3D) => {
+      const mesh = obj as Mesh;
+      if (!mesh.isMesh) return;
+      const src = mesh.material as MeshStandardMaterial;
+      if (!src || !('emissive' in src)) return;
+      const cloned = src.clone();
+      cloned.emissive.setRGB(1, 0, 0);
+      cloned.emissiveIntensity = 0;
+      mesh.material = cloned;
+      mats.push(cloned);
+    });
     strapMatsRef.current = mats;
     if (mats.length === 0) {
-      console.warn('DeviceModel: no strap meshes matched for glow effect');
+      console.warn('DeviceModel: no tray meshes matched for glow effect');
     }
   }, [scene]);
 

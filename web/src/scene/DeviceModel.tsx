@@ -47,81 +47,90 @@ export function DeviceModel() {
     }
 
     // The GLB authors the chair frame and the actuator boom on different
-    // X axes — the chair midline sits ~0.146m left of where horizontal_pivot
-    // mounts, and lateral_pivot sits ~0.114m left of where the foot tray
-    // hangs. Real device photos show the chair, boom, and tray aligned
-    // on one axis, so we (a) shift the chair to align with the boom and
-    // (b) shift lateral_pivot to align its rotation axis with the tray.
+    // X axes. Real device photos show the chair, boom, and tray aligned
+    // on one axis, so we (a) shift lateral_pivot's rotation axis onto the
+    // tray, and (b) shift the chair (frame + upholstered seat together)
+    // so the cradle midline lands on the boom.
     //
-    // Guarded by a ref so HMR / Strict-Mode re-runs don't double-apply.
-    if (!alignmentAppliedRef.current) {
-      alignmentAppliedRef.current = true;
-      scene.updateMatrixWorld(true);
+    // Stored on scene.userData so HMR / Strict-Mode re-mounts revert and
+    // re-apply rather than stacking shifts on a cached scene.
+    scene.updateMatrixWorld(true);
+    const trayBeforePivot = scene.getObjectByName('Traction_tray1') ?? axialRef.current;
+    const userData = scene.userData as { drxPivotDx?: number; drxChairDx?: number };
 
-      const tray = scene.getObjectByName('Traction_tray1') ?? axialRef.current;
-      const trayWorldX = new Vector3().setFromMatrixPosition(tray.matrixWorld).x;
-      const lateralWorldX = new Vector3().setFromMatrixPosition(
-        lateralRef.current.matrixWorld,
-      ).x;
-      const horizontalWorldX = new Vector3().setFromMatrixPosition(
-        horizontalRef.current.matrixWorld,
-      ).x;
-
-      // (a) align lateral_pivot.x with the tray. axial_slider.x compensates
-      // so the tray's world X stays put.
-      const pivotAlignDx = trayWorldX - lateralWorldX;
-      lateralRef.current.position.x += pivotAlignDx;
-      axialRef.current.position.x -= pivotAlignDx;
-
-      // (b) shift the chair frame so its midline lands on the boom mount
-      // point (horizontal_pivot.x). Computed from the four Vertical_leg_*
-      // groups, which form the rectangular chair base.
-      const chairFrame = scene.getObjectByName('Chair_Frame1');
-      if (chairFrame) {
-        const legNames = [
-          'Vertical_leg_11',
-          'Vertical_leg_12',
-          'Vertical_leg_21',
-          'Vertical_leg_22',
-        ];
-        const legXs: number[] = [];
-        const tmp = new Vector3();
-        for (const name of legNames) {
-          const leg = scene.getObjectByName(name);
-          if (leg) {
-            tmp.setFromMatrixPosition(leg.matrixWorld);
-            legXs.push(tmp.x);
-          }
-        }
-        if (legXs.length > 0) {
-          const chairMidX = (Math.min(...legXs) + Math.max(...legXs)) / 2;
-          chairFrame.position.x += horizontalWorldX - chairMidX;
-        }
-      }
-
-      // Hide utility hardware that clutters the silhouette but isn't part of
-      // the visible chair / boom / tray assembly. The CAD source includes
-      // every fastener and caster wheel — leaving them visible spreads the
-      // bounding box (so <Bounds> zooms out) and reads as floating debris
-      // from overhead. The reference CAD render hides these too.
-      const HIDE_NAME_PREFIXES = [
-        'Caster_wheel',
-        'Handle_1',
-        'Handle_2',
-        'Handle_3',
-        'Handle_bushing',
-        'Hex_Cap_Screw',
-        'Circular_Washer',
-        'Prevailing_Torque',
-        'Base_housing',
-        'Electrical_box',
-      ];
-      scene.traverse((obj: Object3D) => {
-        if (HIDE_NAME_PREFIXES.some((p) => obj.name.startsWith(p))) {
-          obj.visible = false;
-        }
-      });
+    // Undo previous run's shifts (if any) before recomputing.
+    if (userData.drxPivotDx !== undefined) {
+      lateralRef.current.position.x -= userData.drxPivotDx;
+      axialRef.current.position.x += userData.drxPivotDx;
     }
+    if (userData.drxChairDx !== undefined) {
+      const prevFrame = scene.getObjectByName('Chair_Frame1');
+      const prevSeat = scene.getObjectByName('Chair1');
+      if (prevFrame) prevFrame.position.x -= userData.drxChairDx;
+      if (prevSeat) prevSeat.position.x -= userData.drxChairDx;
+    }
+    scene.updateMatrixWorld(true);
+
+    const trayWorldX = new Vector3().setFromMatrixPosition(trayBeforePivot.matrixWorld).x;
+    const lateralWorldX = new Vector3().setFromMatrixPosition(lateralRef.current.matrixWorld).x;
+    const horizontalWorldX = new Vector3().setFromMatrixPosition(horizontalRef.current.matrixWorld).x;
+
+    // (a) align lateral_pivot.x with the tray. axial_slider.x compensates
+    // so the tray's world X stays put.
+    const pivotAlignDx = trayWorldX - lateralWorldX;
+    lateralRef.current.position.x += pivotAlignDx;
+    axialRef.current.position.x -= pivotAlignDx;
+    userData.drxPivotDx = pivotAlignDx;
+
+    // (b) Center the chair on the boom using the cradle midline. The
+    // Bent_leg / Bent_leg_2 groups are the visually prominent leg cradles;
+    // their midpoint is the user-perceived chair center. Filter to
+    // Chair_Frame1's direct children to avoid the nested mesh-named
+    // 'Bent_leg_21' collision inside Bent_leg1.
+    const chairFrame = scene.getObjectByName('Chair_Frame1');
+    const chairMesh = scene.getObjectByName('Chair1');
+    if (chairFrame) {
+      const tmp = new Vector3();
+      const cradleXs: number[] = [];
+      for (const child of chairFrame.children) {
+        if (!child.name.startsWith('Bent_leg')) continue;
+        child.updateWorldMatrix(true, false);
+        tmp.setFromMatrixPosition(child.matrixWorld);
+        cradleXs.push(tmp.x);
+      }
+      if (cradleXs.length >= 2) {
+        const cradleMidX = (Math.min(...cradleXs) + Math.max(...cradleXs)) / 2;
+        const chairDx = horizontalWorldX - cradleMidX;
+        chairFrame.position.x += chairDx;
+        if (chairMesh) chairMesh.position.x += chairDx;
+        userData.drxChairDx = chairDx;
+      }
+    }
+
+    // Hide utility hardware that clutters the silhouette but isn't part of
+    // the visible chair / boom / tray assembly. The CAD source includes
+    // every fastener and caster wheel — leaving them visible spreads the
+    // bounding box (so <Bounds> zooms out) and reads as floating debris
+    // from overhead. The reference CAD render hides these too. Idempotent —
+    // setting visible=false multiple times is fine.
+    const HIDE_NAME_PREFIXES = [
+      'Caster_wheel',
+      'Handle_1',
+      'Handle_2',
+      'Handle_3',
+      'Handle_bushing',
+      'Hex_Cap_Screw',
+      'Circular_Washer',
+      'Prevailing_Torque',
+      'Base_housing',
+      'Electrical_box',
+    ];
+    scene.traverse((obj: Object3D) => {
+      if (HIDE_NAME_PREFIXES.some((p) => obj.name.startsWith(p))) {
+        obj.visible = false;
+      }
+    });
+    alignmentAppliedRef.current = true;
 
     axialBaseZRef.current = axialRef.current.position.z;
     lateralBaseYRef.current = lateralRef.current.rotation.y;

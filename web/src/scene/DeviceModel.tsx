@@ -1,7 +1,7 @@
 import { useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
-import { Vector3 } from 'three';
+import { Box3, Vector3 } from 'three';
 import type { Mesh, MeshStandardMaterial, Object3D } from 'three';
 import { useAppStore } from '../store/useAppStore';
 
@@ -82,24 +82,36 @@ export function DeviceModel() {
     axialRef.current.position.x -= pivotAlignDx;
     userData.drxPivotDx = pivotAlignDx;
 
-    // (b) Center the chair on the boom using the cradle midline. The
-    // Bent_leg / Bent_leg_2 groups are the visually prominent leg cradles;
-    // their midpoint is the user-perceived chair center. Filter to
-    // Chair_Frame1's direct children to avoid the nested mesh-named
-    // 'Bent_leg_21' collision inside Bent_leg1.
+    // (b) Center the chair on the boom using the visible cradle bbox.
+    // Chair_Frame1 has a 180° Y rotation that flips its children's X
+    // direction — using cradle origins as the midline doesn't account for
+    // the geometry's asymmetric extension, so the visible chair appears
+    // off-center even when origins are aligned. Computing the bounding box
+    // of the cradle GEOMETRIES (Bent_leg children of Chair_Frame1) gives
+    // the true visual midline. Filter to direct children to avoid the
+    // nested mesh-named 'Bent_leg_21' collision inside Bent_leg1.
     const chairFrame = scene.getObjectByName('Chair_Frame1');
     const chairMesh = scene.getObjectByName('Chair1');
     if (chairFrame) {
-      const tmp = new Vector3();
-      const cradleXs: number[] = [];
+      const cradleBox = new Box3();
+      const tempBox = new Box3();
+      const expandByVisibleMesh = (obj: Object3D) => {
+        if (!obj.visible) return;
+        const m = obj as Mesh;
+        if (m.isMesh && m.geometry) {
+          if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+          tempBox.copy(m.geometry.boundingBox!);
+          m.updateWorldMatrix(true, false);
+          tempBox.applyMatrix4(m.matrixWorld);
+          cradleBox.union(tempBox);
+        }
+        for (const c of obj.children) expandByVisibleMesh(c);
+      };
       for (const child of chairFrame.children) {
-        if (!child.name.startsWith('Bent_leg')) continue;
-        child.updateWorldMatrix(true, false);
-        tmp.setFromMatrixPosition(child.matrixWorld);
-        cradleXs.push(tmp.x);
+        if (child.name.startsWith('Bent_leg')) expandByVisibleMesh(child);
       }
-      if (cradleXs.length >= 2) {
-        const cradleMidX = (Math.min(...cradleXs) + Math.max(...cradleXs)) / 2;
+      if (!cradleBox.isEmpty()) {
+        const cradleMidX = (cradleBox.min.x + cradleBox.max.x) / 2;
         const chairDx = horizontalWorldX - cradleMidX;
         chairFrame.position.x += chairDx;
         if (chairMesh) chairMesh.position.x += chairDx;
@@ -130,6 +142,38 @@ export function DeviceModel() {
         obj.visible = false;
       }
     });
+
+    // (c) Center the visible device on the world origin in X/Z so the
+    // OrbitControls target (which CameraRig sets to (0, 0.6, 0)) actually
+    // points at the model. Without this, the device sits ~0.4m off-axis
+    // from origin and reads as offset on phone-portrait viewports.
+    // Reset scene.position before computing the bbox so re-mounts on a
+    // cached scene don't compute a bbox that's already centered.
+    scene.position.x = 0;
+    scene.position.z = 0;
+    scene.updateMatrixWorld(true);
+    const finalBox = new Box3();
+    const finalTemp = new Box3();
+    const expandFinal = (obj: Object3D) => {
+      if (!obj.visible) return;
+      const m = obj as Mesh;
+      if (m.isMesh && m.geometry) {
+        if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+        finalTemp.copy(m.geometry.boundingBox!);
+        m.updateWorldMatrix(true, false);
+        finalTemp.applyMatrix4(m.matrixWorld);
+        finalBox.union(finalTemp);
+      }
+      for (const c of obj.children) expandFinal(c);
+    };
+    expandFinal(scene);
+    if (!finalBox.isEmpty()) {
+      const cx = (finalBox.min.x + finalBox.max.x) / 2;
+      const cz = (finalBox.min.z + finalBox.max.z) / 2;
+      scene.position.x = -cx;
+      scene.position.z = -cz;
+    }
+
     alignmentAppliedRef.current = true;
 
     axialBaseZRef.current = axialRef.current.position.z;

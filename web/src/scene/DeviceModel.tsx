@@ -1,6 +1,7 @@
 import { useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
+import { Vector3 } from 'three';
 import type { Mesh, MeshStandardMaterial, Object3D } from 'three';
 import { useAppStore } from '../store/useAppStore';
 
@@ -48,6 +49,48 @@ export function DeviceModel() {
       );
       return;
     }
+
+    // The GLB authors the kinematic chain off-center: at rest the foot tray
+    // sits ~0.15m right of the chair midline, and lateral_pivot is offset
+    // from the tray's X by ~0.11m, so rotating around it sweeps an
+    // asymmetric arc that visibly leaves the chair frame. Two transform
+    // tweaks fix both:
+    //   (a) shift lateral_pivot.x in its parent frame so it sits directly
+    //       under the tray's rest X (and compensate axial_slider so the
+    //       tray itself doesn't move). Now lateral rotation is symmetric.
+    //   (b) translate horizontal_pivot.x so the (now-centered) tray's rest
+    //       pose lands on the chair's midline.
+    scene.updateMatrixWorld(true);
+    const tray = scene.getObjectByName('Traction_tray1') ?? axialRef.current;
+    const trayWorld = new Vector3().setFromMatrixPosition(tray.matrixWorld);
+    const lateralWorld = new Vector3().setFromMatrixPosition(
+      lateralRef.current.matrixWorld,
+    );
+
+    const legNames = [
+      'Vertical_leg_11',
+      'Vertical_leg_12',
+      'Vertical_leg_21',
+      'Vertical_leg_22',
+    ];
+    const legXs: number[] = [];
+    const tmp = new Vector3();
+    for (const name of legNames) {
+      const leg = scene.getObjectByName(name);
+      if (leg) {
+        tmp.setFromMatrixPosition(leg.matrixWorld);
+        legXs.push(tmp.x);
+      }
+    }
+    const chairMidX =
+      legXs.length > 0 ? (Math.min(...legXs) + Math.max(...legXs)) / 2 : trayWorld.x;
+
+    const pivotAlignDx = trayWorld.x - lateralWorld.x;
+    lateralRef.current.position.x += pivotAlignDx;
+    axialRef.current.position.x -= pivotAlignDx;
+
+    const centeringDx = chairMidX - trayWorld.x;
+    horizontalRef.current.position.x += centeringDx;
 
     axialBaseZRef.current = axialRef.current.position.z;
     lateralBaseYRef.current = lateralRef.current.rotation.y;

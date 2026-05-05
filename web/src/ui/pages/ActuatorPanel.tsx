@@ -46,7 +46,11 @@ export function ActuatorPanel({ actuator }: { actuator: Actuator }) {
   const pressure = useAppStore((s) => s.device.pressure);
 
   const nudge = (delta: number) => {
-    const next = Math.max(limits.min, Math.min(limits.max, state.target + delta));
+    // Read live target from the store so a burst of clicks within a single
+    // React render frame still accumulates instead of all reading the same
+    // pre-render snapshot.
+    const current = useAppStore.getState().device[actuator].target;
+    const next = Math.max(limits.min, Math.min(limits.max, current + delta));
     simDevice.send(cfg.command(next));
   };
 

@@ -37,6 +37,7 @@ export class SimulatedDevice {
       case 'eStop':
         s.setEStop(true);
         s.setPressureTarget(0);
+        s.setPulsing(false);
         useAppStore.setState((prev) => ({
           device: {
             ...prev.device,
@@ -53,11 +54,6 @@ export class SimulatedDevice {
 
   tick(dtSec: number): void {
     const { device } = useAppStore.getState();
-    if (device.eStop) return;
-
-    const axial = stepActuator(device.axial, SPEEDS.axial, dtSec);
-    const horizontal = stepActuator(device.horizontal, SPEEDS.horizontal, dtSec);
-    const lateral = stepActuator(device.lateral, SPEEDS.lateral, dtSec);
 
     const pDelta = device.pressure.target - device.pressure.lbs;
     const pMax = SPEEDS.pressure * dtSec;
@@ -65,6 +61,21 @@ export class SimulatedDevice {
       Math.abs(pDelta) <= pMax
         ? device.pressure.target
         : device.pressure.lbs + Math.sign(pDelta) * pMax;
+
+    // E-Stop freezes actuator motion but lets pressure bleed off — the
+    // handler sets pressure.target = 0 so a latched device depressurizes.
+    if (device.eStop) {
+      if (pressureLbs !== device.pressure.lbs) {
+        useAppStore.setState({
+          device: { ...device, pressure: { ...device.pressure, lbs: pressureLbs } },
+        });
+      }
+      return;
+    }
+
+    const axial = stepActuator(device.axial, SPEEDS.axial, dtSec);
+    const horizontal = stepActuator(device.horizontal, SPEEDS.horizontal, dtSec);
+    const lateral = stepActuator(device.lateral, SPEEDS.lateral, dtSec);
 
     useAppStore.setState({
       device: {

@@ -32,6 +32,36 @@ describe('SimulatedDevice', () => {
     expect(useAppStore.getState().device.axial.pos).toBe(0);
   });
 
+  it('eStop clears pulsing flag', () => {
+    const dev = new SimulatedDevice();
+    dev.send('J');
+    expect(useAppStore.getState().device.pulsing).toBe(true);
+    dev.send('X');
+    expect(useAppStore.getState().device.pulsing).toBe(false);
+  });
+
+  it('eStop bleeds pressure to zero while latched', () => {
+    const dev = new SimulatedDevice();
+    useAppStore.setState((s) => ({
+      device: { ...s.device, pressure: { lbs: 60, target: 60 } },
+    }));
+    dev.send('X');
+    expect(useAppStore.getState().device.pressure.target).toBe(0);
+    // SPEEDS.pressure = 20 lbs/sec, 3s should fully drain 60 lbs.
+    dev.tick(3);
+    expect(useAppStore.getState().device.pressure.lbs).toBe(0);
+  });
+
+  it('eStop freezes actuator pos even while pressure decays', () => {
+    const dev = new SimulatedDevice();
+    dev.send('A12 3');
+    dev.tick(2);
+    const posBefore = useAppStore.getState().device.axial.pos;
+    dev.send('X');
+    dev.tick(5);
+    expect(useAppStore.getState().device.axial.pos).toBe(posBefore);
+  });
+
   it('tick advances actuators toward targets', () => {
     const dev = new SimulatedDevice();
     dev.send('A12 2');

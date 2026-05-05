@@ -27,7 +27,7 @@ export function BottomNav() {
         const active = tab.kind === 'page' && page === tab.id;
         const Icon = tab.icon;
         const handle = () => {
-          if (tab.kind === 'video') setUi({ videoOpen: true });
+          if (tab.kind === 'action') setUi({ videoOpen: true });
           else setUi({ page: tab.id });
         };
         return (

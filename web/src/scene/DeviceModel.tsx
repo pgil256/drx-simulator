@@ -56,9 +56,17 @@ export function DeviceModel() {
     // re-apply rather than stacking shifts on a cached scene.
     scene.updateMatrixWorld(true);
     const trayBeforePivot = scene.getObjectByName('Traction_tray1') ?? axialRef.current;
-    const userData = scene.userData as { drxPivotDx?: number; drxChairDx?: number };
+    const userData = scene.userData as {
+      drxPivotDx?: number;
+      drxAxialDx?: number;
+      drxChairDx?: number;
+    };
 
-    // Undo previous run's shifts (if any) before recomputing.
+    // Undo previous run's shifts (if any) before recomputing. Order matters:
+    // axial undo must come before pivot undo to mirror the apply order.
+    if (userData.drxAxialDx !== undefined) {
+      axialRef.current.position.x -= userData.drxAxialDx;
+    }
     if (userData.drxPivotDx !== undefined) {
       lateralRef.current.position.x -= userData.drxPivotDx;
       axialRef.current.position.x += userData.drxPivotDx;
@@ -75,12 +83,46 @@ export function DeviceModel() {
     const lateralWorldX = new Vector3().setFromMatrixPosition(lateralRef.current.matrixWorld).x;
     const horizontalWorldX = new Vector3().setFromMatrixPosition(horizontalRef.current.matrixWorld).x;
 
-    // (a) align lateral_pivot.x with the tray. axial_slider.x compensates
-    // so the tray's world X stays put.
+    // (a) align lateral_pivot.x with the tray's origin. axial_slider.x
+    // compensates so the tray's world X stays put.
     const pivotAlignDx = trayWorldX - lateralWorldX;
     lateralRef.current.position.x += pivotAlignDx;
     axialRef.current.position.x -= pivotAlignDx;
     userData.drxPivotDx = pivotAlignDx;
+
+    // (a2) Center the visible foot piece on the rod axis. The GLB has the
+    // tray + traction body geometry offset ~9cm from axial_slider's origin,
+    // so the rod axis (lateral_pivot.x) sits to one side of the visible
+    // foot platform. Shifting axial_slider.x by the bbox offset moves the
+    // visible rod+tray onto the rod axis. (The shift is in lateral_pivot's
+    // local frame — when lateral rotates, the foot piece swings symmetrically
+    // around lateral_pivot just like before; the rest pose just lands on
+    // the centerline.)
+    scene.updateMatrixWorld(true);
+    const axialMeshBox = new Box3();
+    const axialTempBox = new Box3();
+    const expandAxial = (obj: Object3D) => {
+      if (!obj.visible) return;
+      const m = obj as Mesh;
+      if (m.isMesh && m.geometry) {
+        if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+        axialTempBox.copy(m.geometry.boundingBox!);
+        m.updateWorldMatrix(true, false);
+        axialTempBox.applyMatrix4(m.matrixWorld);
+        axialMeshBox.union(axialTempBox);
+      }
+      for (const c of obj.children) expandAxial(c);
+    };
+    expandAxial(axialRef.current);
+    if (!axialMeshBox.isEmpty()) {
+      const axialMidX = (axialMeshBox.min.x + axialMeshBox.max.x) / 2;
+      const lateralWorldXNow = new Vector3().setFromMatrixPosition(
+        lateralRef.current.matrixWorld,
+      ).x;
+      const axialDx = lateralWorldXNow - axialMidX;
+      axialRef.current.position.x += axialDx;
+      userData.drxAxialDx = axialDx;
+    }
 
     // (b) Center the chair on the boom using the visible cradle bbox.
     // Chair_Frame1 has a 180° Y rotation that flips its children's X

@@ -1,23 +1,41 @@
 import { useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
-import { Box3, Vector3 } from 'three';
-import type { Mesh, MeshStandardMaterial, Object3D } from 'three';
+import {
+  Box3,
+  BoxGeometry,
+  DoubleSide,
+  Mesh as ThreeMesh,
+  MeshStandardMaterial,
+  Object3D,
+  Vector3,
+} from 'three';
+import type { Mesh } from 'three';
 import { useAppStore } from '../store/useAppStore';
 
 const PRESSURE_MAX_LBS = 80;
 const GLOW_MAX_INTENSITY = 0.8;
 const PULSE_HZ = 1.5;
 const PULSE_GLOW_AMPLITUDE = 2.0;
+const PULSE_AXIAL_TRAVEL_IN = 0.12;
 
 // Rest-pose calibration: the GLB authors the leg tilted up from horizontal.
 // This offset makes horizontal.pos = -15 (the initial store value) render parallel to the ground.
 const HORIZONTAL_REST_CALIBRATION_DEG = 15;
 
+// The tray/traction meshes are authored a few degrees off the base-extension
+// and chair centerline. This makes the neutral lateral state render straight.
+const LATERAL_REST_CALIBRATION_DEG = 6;
+
 const IN_TO_M = 0.0254;
 
 function degToRad(deg: number) {
   return (deg * Math.PI) / 180;
+}
+
+function luminance(mat: MeshStandardMaterial) {
+  const { r, g, b } = mat.color;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 export function DeviceModel() {
@@ -35,16 +53,30 @@ export function DeviceModel() {
   const alignmentAppliedRef = useRef(false);
 
   useEffect(() => {
+    const horizontalRoot = scene.getObjectByName('horizontal_pivot') ?? null;
     axialRef.current = scene.getObjectByName('axial_slider') ?? null;
     lateralRef.current = scene.getObjectByName('lateral_pivot') ?? null;
-    horizontalRef.current = scene.getObjectByName('horizontal_pivot') ?? null;
 
-    if (!axialRef.current || !lateralRef.current || !horizontalRef.current) {
+    if (!axialRef.current || !lateralRef.current || !horizontalRoot) {
       console.warn(
         'DeviceModel: pivot groups not found. Expected axial_slider, lateral_pivot, horizontal_pivot',
       );
       return;
     }
+
+    let footPitchPivot = horizontalRoot.getObjectByName('foot_pitch_pivot');
+    if (!footPitchPivot) {
+      footPitchPivot = new Object3D();
+      footPitchPivot.name = 'foot_pitch_pivot';
+      horizontalRoot.add(footPitchPivot);
+    }
+    if (lateralRef.current.parent !== footPitchPivot) {
+      footPitchPivot.add(lateralRef.current);
+    }
+    horizontalRoot.rotation.x = 0;
+    footPitchPivot.rotation.x = 0;
+    lateralRef.current.rotation.y = degToRad(LATERAL_REST_CALIBRATION_DEG);
+    horizontalRef.current = footPitchPivot;
 
     // The GLB authors the chair frame and the actuator boom on different
     // X axes. Real device photos show the chair, boom, and tray aligned
@@ -59,6 +91,7 @@ export function DeviceModel() {
     const userData = scene.userData as {
       drxPivotDx?: number;
       drxAxialDx?: number;
+      drxBaseExtensionDx?: number;
       drxChairDx?: number;
     };
 
@@ -71,6 +104,10 @@ export function DeviceModel() {
       lateralRef.current.position.x -= userData.drxPivotDx;
       axialRef.current.position.x += userData.drxPivotDx;
     }
+    if (userData.drxBaseExtensionDx !== undefined) {
+      const prevBaseExtension = scene.getObjectByName('Base_extension1');
+      if (prevBaseExtension) prevBaseExtension.position.x -= userData.drxBaseExtensionDx;
+    }
     if (userData.drxChairDx !== undefined) {
       const prevFrame = scene.getObjectByName('Chair_Frame1');
       const prevSeat = scene.getObjectByName('Chair1');
@@ -81,7 +118,7 @@ export function DeviceModel() {
 
     const trayWorldX = new Vector3().setFromMatrixPosition(trayBeforePivot.matrixWorld).x;
     const lateralWorldX = new Vector3().setFromMatrixPosition(lateralRef.current.matrixWorld).x;
-    const horizontalWorldX = new Vector3().setFromMatrixPosition(horizontalRef.current.matrixWorld).x;
+    const horizontalWorldX = new Vector3().setFromMatrixPosition(horizontalRoot.matrixWorld).x;
 
     // (a) align lateral_pivot.x with the tray's origin. axial_slider.x
     // compensates so the tray's world X stays put.
@@ -122,6 +159,18 @@ export function DeviceModel() {
       const axialDx = lateralWorldXNow - axialMidX;
       axialRef.current.position.x += axialDx;
       userData.drxAxialDx = axialDx;
+    }
+
+    const baseExtension = scene.getObjectByName('Base_extension1');
+    if (baseExtension) {
+      scene.updateMatrixWorld(true);
+      const baseBox = new Box3().setFromObject(baseExtension);
+      if (!baseBox.isEmpty()) {
+        const baseMidX = (baseBox.min.x + baseBox.max.x) / 2;
+        const baseDx = horizontalWorldX - baseMidX;
+        baseExtension.position.x += baseDx;
+        userData.drxBaseExtensionDx = baseDx;
+      }
     }
 
     // (b) Center the chair on the boom using the visible cradle bbox.
@@ -165,14 +214,113 @@ export function DeviceModel() {
     // The reference CAD renders show the wheels, handles, base housing, and
     // electrical box as integrated parts of the device, so we keep them
     // visible. Idempotent — setting visible=false multiple times is fine.
+    scene.traverse((obj: Object3D) => {
+      const mesh = obj as Mesh;
+      if (!mesh.isMesh) return;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const mat of materials) {
+        if (!mat) continue;
+        mat.side = DoubleSide;
+        if ('metalness' in mat) mat.metalness = 0.12;
+        if ('roughness' in mat) mat.roughness = 0.68;
+        mat.needsUpdate = true;
+      }
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    });
+
+    const chairMaterialClones = new Map<MeshStandardMaterial, MeshStandardMaterial>();
+    chairMesh?.traverse((obj: Object3D) => {
+      const mesh = obj as Mesh;
+      if (!mesh.isMesh) return;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const tuned = materials.map((src) => {
+        const mat = src as MeshStandardMaterial;
+        let cloned = chairMaterialClones.get(mat);
+        if (!cloned) {
+          cloned = mat.clone();
+          const l = luminance(cloned);
+          if (cloned.color.b > cloned.color.r * 1.8 && cloned.color.b > cloned.color.g * 1.8) {
+            cloned.color.set('#2d55ff');
+          } else if (l < 0.08) {
+            cloned.color.set('#48515d');
+          } else if (l < 0.2) {
+            cloned.color.set('#55606b');
+          }
+          cloned.metalness = 0.04;
+          cloned.roughness = 0.82;
+          cloned.side = DoubleSide;
+          cloned.needsUpdate = true;
+          chairMaterialClones.set(mat, cloned);
+        }
+        return cloned;
+      });
+      mesh.material = Array.isArray(mesh.material) ? tuned : tuned[0];
+    });
+
+    const previousCasterSupports = scene.getObjectByName('caster_supports');
+    if (previousCasterSupports) {
+      previousCasterSupports.removeFromParent();
+    }
+    const casterSupports = new Object3D();
+    casterSupports.name = 'caster_supports';
+    const casterMaterial = new MeshStandardMaterial({
+      color: '#9a9a92',
+      metalness: 0.05,
+      roughness: 0.72,
+      side: DoubleSide,
+    });
+    const stemGeometry = new BoxGeometry(0.032, 0.14, 0.032);
+    const plateGeometry = new BoxGeometry(0.09, 0.018, 0.075);
+    const forkGeometry = new BoxGeometry(0.014, 0.1, 0.024);
+    for (let i = 1; i <= 6; i += 1) {
+      const wheel = scene.getObjectByName(`Caster_wheel${i}`);
+      if (!wheel) continue;
+      scene.updateMatrixWorld(true);
+      const wheelBox = new Box3().setFromObject(wheel);
+      if (wheelBox.isEmpty()) continue;
+      const center = wheelBox.getCenter(new Vector3());
+      const wheelTopY = wheelBox.max.y;
+      const plateY = wheelTopY + 0.13;
+
+      const stem = new ThreeMesh(stemGeometry, casterMaterial);
+      stem.name = `caster_support_stem_${i}`;
+      stem.position.set(center.x, wheelTopY + (plateY - wheelTopY) / 2, center.z);
+      stem.castShadow = true;
+      stem.receiveShadow = true;
+      casterSupports.add(stem);
+
+      const plate = new ThreeMesh(plateGeometry, casterMaterial);
+      plate.name = `caster_support_plate_${i}`;
+      plate.position.set(center.x, plateY, center.z);
+      plate.castShadow = true;
+      plate.receiveShadow = true;
+      casterSupports.add(plate);
+
+      const forkY = wheelTopY - 0.035;
+      for (const x of [wheelBox.min.x - 0.008, wheelBox.max.x + 0.008]) {
+        const fork = new ThreeMesh(forkGeometry, casterMaterial);
+        fork.name = `caster_support_fork_${i}`;
+        fork.position.set(x, forkY, center.z);
+        fork.castShadow = true;
+        fork.receiveShadow = true;
+        casterSupports.add(fork);
+      }
+    }
+    scene.add(casterSupports);
+
     const HIDE_NAME_PREFIXES = [
       'Hex_Cap_Screw',
       'Circular_Washer',
       'Prevailing_Torque',
       'Handle_bushing',
     ];
+    const HIDE_EXACT_NAMES = ['Handle_31'];
     scene.traverse((obj: Object3D) => {
-      if (HIDE_NAME_PREFIXES.some((p) => obj.name.startsWith(p))) {
+      if (
+        HIDE_EXACT_NAMES.includes(obj.name) ||
+        HIDE_NAME_PREFIXES.some((p) => obj.name.startsWith(p))
+      ) {
         obj.visible = false;
       }
     });
@@ -240,8 +388,12 @@ export function DeviceModel() {
 
   useFrame((state) => {
     const d = useAppStore.getState().device;
+    const pulseT = d.pulsing
+      ? 0.5 + 0.5 * Math.sin(state.clock.getElapsedTime() * 2 * Math.PI * PULSE_HZ)
+      : 0;
     if (axialRef.current) {
-      axialRef.current.position.z = axialBaseZRef.current + d.axial.pos * IN_TO_M;
+      const pulseTravel = pulseT * PULSE_AXIAL_TRAVEL_IN;
+      axialRef.current.position.z = axialBaseZRef.current + (d.axial.pos + pulseTravel) * IN_TO_M;
     }
     if (lateralRef.current) {
       lateralRef.current.rotation.y = lateralBaseYRef.current + degToRad(d.lateral.pos);
@@ -252,9 +404,6 @@ export function DeviceModel() {
     }
 
     const pressureGlow = (d.pressure.lbs / PRESSURE_MAX_LBS) * GLOW_MAX_INTENSITY;
-    const pulseT = d.pulsing
-      ? 0.5 + 0.5 * Math.sin(state.clock.getElapsedTime() * 2 * Math.PI * PULSE_HZ)
-      : 0;
     const intensity = pressureGlow + pulseT * PULSE_GLOW_AMPLITUDE;
     for (const mat of strapMatsRef.current) {
       // Shift emissive toward yellow-white at pulse peaks so pulses look

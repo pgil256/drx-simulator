@@ -35,12 +35,7 @@ export function Scene() {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
   return (
-    <Canvas
-      className="h-full w-full"
-      camera={{ position: [2, 1.5, 2.5], fov: 45 }}
-      shadows
-      style={{ background: '#ffffff' }}
-    >
+    <Canvas camera={{ position: [2, 1.5, 2.5], fov: 45 }} shadows>
       <Suspense fallback={null}>
         <ambientLight intensity={0.6} />
         <directionalLight position={[3, 5, 3]} intensity={0.9} castShadow color="#ffffff" />

@@ -60,10 +60,12 @@ export function DeviceModel() {
       drxPivotDx?: number;
       drxAxialDx?: number;
       drxChairDx?: number;
+      drxBoomDx?: number;
     };
 
     // Undo previous run's shifts (if any) before recomputing. Order matters:
-    // axial undo must come before pivot undo to mirror the apply order.
+    // axial undo must come before pivot undo to mirror the apply order;
+    // boom undo must come before any reads of horizontal_pivot's world X.
     if (userData.drxAxialDx !== undefined) {
       axialRef.current.position.x -= userData.drxAxialDx;
     }
@@ -75,7 +77,53 @@ export function DeviceModel() {
       const prevFrame = scene.getObjectByName('Chair Frame:1');
       if (prevFrame) prevFrame.position.x -= userData.drxChairDx;
     }
+    if (userData.drxBoomDx !== undefined) {
+      horizontalRef.current.position.x -= userData.drxBoomDx;
+    }
     scene.updateMatrixWorld(true);
+
+    // (b0) Align horizontal_pivot.x to Chair:1's VISUAL center. Chair:1's
+    // mesh geometry is authored ~0.137m to the LEFT of its origin, so the
+    // chair appears centered to the left of the boom axis. Shifting the
+    // boom (and its descendants — lateral_pivot, axial_slider, foot tray)
+    // onto the chair's visible centerline puts the foot tray directly on
+    // the patient's centerline like the reference renders.
+    const chairMeshNode = scene.getObjectByName('Chair:1');
+    if (chairMeshNode) {
+      const chairBox = new Box3();
+      const chairTemp = new Box3();
+      const expandChair = (obj: Object3D) => {
+        if (!obj.visible) return;
+        const m = obj as Mesh;
+        if (m.isMesh && m.geometry) {
+          if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+          chairTemp.copy(m.geometry.boundingBox!);
+          m.updateWorldMatrix(true, false);
+          chairTemp.applyMatrix4(m.matrixWorld);
+          chairBox.union(chairTemp);
+        }
+        for (const c of obj.children) expandChair(c);
+      };
+      expandChair(chairMeshNode);
+      if (!chairBox.isEmpty()) {
+        const chairCenterX = (chairBox.min.x + chairBox.max.x) / 2;
+        const boomWorldX = new Vector3().setFromMatrixPosition(horizontalRef.current.matrixWorld).x;
+        const boomDx = chairCenterX - boomWorldX;
+        horizontalRef.current.position.x += boomDx;
+        userData.drxBoomDx = boomDx;
+        scene.updateMatrixWorld(true);
+      }
+    }
+
+    // Zero the foot tray's authored X/Y rotation (~9° pitch / -6° yaw).
+    // Only the ~180° Z rotation is intentional for orientation; the X/Y
+    // tilts make the foot tray render at a slight angle vs the chair's
+    // vertical axis. Idempotent on HMR (zero stays zero).
+    const trayNode = scene.getObjectByName('Traction tray:1');
+    if (trayNode) {
+      trayNode.rotation.x = 0;
+      trayNode.rotation.y = 0;
+    }
 
     const trayWorldX = new Vector3().setFromMatrixPosition(trayBeforePivot.matrixWorld).x;
     const lateralWorldX = new Vector3().setFromMatrixPosition(lateralRef.current.matrixWorld).x;

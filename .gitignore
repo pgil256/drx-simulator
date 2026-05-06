@@ -1,3 +1,5 @@
 .vercel
 node_modules
 .claude/
+inventor_files/
+public_previous/

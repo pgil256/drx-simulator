@@ -73,9 +73,7 @@ export function DeviceModel() {
     }
     if (userData.drxChairDx !== undefined) {
       const prevFrame = scene.getObjectByName('Chair Frame:1');
-      const prevSeat = scene.getObjectByName('Chair:1');
       if (prevFrame) prevFrame.position.x -= userData.drxChairDx;
-      if (prevSeat) prevSeat.position.x -= userData.drxChairDx;
     }
     scene.updateMatrixWorld(true);
 
@@ -133,7 +131,6 @@ export function DeviceModel() {
     // the true visual midline. Filter to direct children to avoid the
     // nested mesh-named 'Bent_leg_21' collision inside Bent_leg1.
     const chairFrame = scene.getObjectByName('Chair Frame:1');
-    const chairMesh = scene.getObjectByName('Chair:1');
     if (chairFrame) {
       const cradleBox = new Box3();
       const tempBox = new Box3();
@@ -156,7 +153,6 @@ export function DeviceModel() {
         const cradleMidX = (cradleBox.min.x + cradleBox.max.x) / 2;
         const chairDx = horizontalWorldX - cradleMidX;
         chairFrame.position.x += chairDx;
-        if (chairMesh) chairMesh.position.x += chairDx;
         userData.drxChairDx = chairDx;
       }
     }

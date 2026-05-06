@@ -1,5 +1,5 @@
 import { Canvas, useThree } from '@react-three/fiber';
-import { Bounds, Environment, OrbitControls } from '@react-three/drei';
+import { Bounds, OrbitControls } from '@react-three/drei';
 import { Suspense, useEffect, useRef } from 'react';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { DeviceModel } from './DeviceModel';
@@ -37,8 +37,9 @@ export function Scene() {
   return (
     <Canvas camera={{ position: [2, 1.5, 2.5], fov: 45 }} shadows>
       <Suspense fallback={null}>
-        <Environment preset="studio" />
-        <directionalLight position={[3, 5, 3]} intensity={1.2} castShadow />
+        <ambientLight intensity={0.6} />
+        <directionalLight position={[3, 5, 3]} intensity={0.9} castShadow color="#ffffff" />
+        <directionalLight position={[-3, 4, -2]} intensity={0.4} color="#ffffff" />
         <Bounds fit clip observe margin={1.2}>
           <DeviceModel />
         </Bounds>

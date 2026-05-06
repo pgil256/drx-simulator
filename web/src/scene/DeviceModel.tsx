@@ -161,23 +161,15 @@ export function DeviceModel() {
       }
     }
 
-    // Hide utility hardware that clutters the silhouette but isn't part of
-    // the visible chair / boom / tray assembly. The CAD source includes
-    // every fastener and caster wheel — leaving them visible spreads the
-    // bounding box (so <Bounds> zooms out) and reads as floating debris
-    // from overhead. The reference CAD render hides these too. Idempotent —
-    // setting visible=false multiple times is fine.
+    // Hide only the small fasteners (hex screws, washers, nuts, bushings).
+    // The reference CAD renders show the wheels, handles, base housing, and
+    // electrical box as integrated parts of the device, so we keep them
+    // visible. Idempotent — setting visible=false multiple times is fine.
     const HIDE_NAME_PREFIXES = [
-      'Caster_wheel',
-      'Handle_1',
-      'Handle_2',
-      'Handle_3',
-      'Handle_bushing',
       'Hex_Cap_Screw',
       'Circular_Washer',
       'Prevailing_Torque',
-      'Base_housing',
-      'Electrical_box',
+      'Handle_bushing',
     ];
     scene.traverse((obj: Object3D) => {
       if (HIDE_NAME_PREFIXES.some((p) => obj.name.startsWith(p))) {

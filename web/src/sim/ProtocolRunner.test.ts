@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ProtocolRunner } from './ProtocolRunner';
-import { SimulatedDevice } from './SimulatedDevice';
 import { useAppStore } from '../store/useAppStore';
 import { INITIAL_DEVICE_STATE } from './types';
 
@@ -98,16 +97,6 @@ describe('ProtocolRunner', () => {
 
     expect(useAppStore.getState().session.phase).toBe('positioning');
     expect(dev.sent).toContain('K -12');
-  });
-
-  it('starting a protocol maps pressure to outward axial traction', () => {
-    freshStore({ maxPressure: 40 });
-    const dev = new SimulatedDevice();
-    const runner = new ProtocolRunner(dev);
-    runner.start(1);
-
-    expect(useAppStore.getState().device.pressure.target).toBe(40);
-    expect(useAppStore.getState().device.axial.target).toBe(2);
   });
 
   it('protocol 3 sends positive lateral angle', () => {

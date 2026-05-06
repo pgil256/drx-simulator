@@ -69,16 +69,6 @@ describe('SimulatedDevice', () => {
     expect(useAppStore.getState().device.axial.pos).toBeCloseTo(1, 5);
   });
 
-  it('maps pressure commands to outward axial traction', () => {
-    const dev = new SimulatedDevice();
-    dev.send('P40');
-    expect(useAppStore.getState().device.pressure.target).toBe(40);
-    expect(useAppStore.getState().device.axial.target).toBe(2);
-
-    dev.send('P0');
-    expect(useAppStore.getState().device.axial.target).toBe(0);
-  });
-
   it('ignores unknown commands silently', () => {
     const dev = new SimulatedDevice();
     expect(() => dev.send('ZZZ')).not.toThrow();

@@ -55,7 +55,7 @@ export function DeviceModel() {
     // Stored on scene.userData so HMR / Strict-Mode re-mounts revert and
     // re-apply rather than stacking shifts on a cached scene.
     scene.updateMatrixWorld(true);
-    const trayBeforePivot = scene.getObjectByName('Traction_tray1') ?? axialRef.current;
+    const trayBeforePivot = scene.getObjectByName('Traction tray:1') ?? axialRef.current;
     const userData = scene.userData as {
       drxPivotDx?: number;
       drxAxialDx?: number;
@@ -72,8 +72,8 @@ export function DeviceModel() {
       axialRef.current.position.x += userData.drxPivotDx;
     }
     if (userData.drxChairDx !== undefined) {
-      const prevFrame = scene.getObjectByName('Chair_Frame1');
-      const prevSeat = scene.getObjectByName('Chair1');
+      const prevFrame = scene.getObjectByName('Chair Frame:1');
+      const prevSeat = scene.getObjectByName('Chair:1');
       if (prevFrame) prevFrame.position.x -= userData.drxChairDx;
       if (prevSeat) prevSeat.position.x -= userData.drxChairDx;
     }
@@ -132,8 +132,8 @@ export function DeviceModel() {
     // of the cradle GEOMETRIES (Bent_leg children of Chair_Frame1) gives
     // the true visual midline. Filter to direct children to avoid the
     // nested mesh-named 'Bent_leg_21' collision inside Bent_leg1.
-    const chairFrame = scene.getObjectByName('Chair_Frame1');
-    const chairMesh = scene.getObjectByName('Chair1');
+    const chairFrame = scene.getObjectByName('Chair Frame:1');
+    const chairMesh = scene.getObjectByName('Chair:1');
     if (chairFrame) {
       const cradleBox = new Box3();
       const tempBox = new Box3();
@@ -150,7 +150,7 @@ export function DeviceModel() {
         for (const c of obj.children) expandByVisibleMesh(c);
       };
       for (const child of chairFrame.children) {
-        if (child.name.startsWith('Bent_leg')) expandByVisibleMesh(child);
+        if (child.name.startsWith('Bent leg')) expandByVisibleMesh(child);
       }
       if (!cradleBox.isEmpty()) {
         const cradleMidX = (cradleBox.min.x + cradleBox.max.x) / 2;
@@ -166,10 +166,10 @@ export function DeviceModel() {
     // electrical box as integrated parts of the device, so we keep them
     // visible. Idempotent — setting visible=false multiple times is fine.
     const HIDE_NAME_PREFIXES = [
-      'Hex_Cap_Screw',
-      'Circular_Washer',
-      'Prevailing_Torque',
-      'Handle_bushing',
+      'Hex Cap Screw',
+      'Circular Washer',
+      'Prevailing Torque',
+      'Handle bushing',
     ];
     scene.traverse((obj: Object3D) => {
       if (HIDE_NAME_PREFIXES.some((p) => obj.name.startsWith(p))) {
@@ -219,7 +219,7 @@ export function DeviceModel() {
     // makes the glow visually align with where pressure is applied. The
     // chair-frame "Bent_leg" pieces are static structural cradles and are
     // intentionally not part of the glow.
-    const tray = scene.getObjectByName('Traction_tray1') ?? axialRef.current;
+    const tray = scene.getObjectByName('Traction tray:1') ?? axialRef.current;
     const mats: MeshStandardMaterial[] = [];
     tray.traverse((obj: Object3D) => {
       const mesh = obj as Mesh;

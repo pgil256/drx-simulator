@@ -3,14 +3,13 @@ import { INITIAL_DEVICE_STATE, type DeviceState } from '../sim/types';
 
 export type Page = 'home' | 'setup' | 'protocols' | 'help';
 export type SetupTab = 'axial' | 'horizontal' | 'lateral';
-export type ProtocolId = 1 | 2 | 3 | 4;
+export type ProtocolId = 1 | 2 | 3;
 export type ProtocolPhase =
   | 'idle'
   | 'ramping'
   | 'positioning'
   | 'holding'
   | 'pulsing'
-  | 'oscillating'
   | 'cooling'
   | 'done';
 

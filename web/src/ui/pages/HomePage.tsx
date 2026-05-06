@@ -6,7 +6,7 @@ type QuickLink = { page: Page; title: string; blurb: string };
 
 const LINKS: QuickLink[] = [
   { page: 'setup', title: 'Setup', blurb: 'Drive each actuator manually to verify range and feel.' },
-  { page: 'protocols', title: 'Protocols', blurb: 'Run one of the four guided treatment sequences.' },
+  { page: 'protocols', title: 'Protocols', blurb: 'Run one of the guided treatment sequences.' },
   { page: 'help', title: 'Help', blurb: 'Command reference and operating tips.' },
 ];
 

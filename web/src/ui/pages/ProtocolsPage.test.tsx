@@ -29,12 +29,12 @@ describe('ProtocolsPage', () => {
     resetStore();
   });
 
-  it('renders all four protocol cards', () => {
+  it('renders production protocol cards only', () => {
     render(<ProtocolsPage />);
     expect(screen.getByRole('button', { name: /Protocol 1.*Axial/s })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Protocol 2.*Left Lateral/s })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Protocol 3.*Right Lateral/s })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Protocol 4.*Oscillating/s })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Protocol 4/s })).not.toBeInTheDocument();
   });
 
   it('shows lateral angle sliders only for protocols that need them', async () => {
@@ -48,8 +48,8 @@ describe('ProtocolsPage', () => {
     expect(screen.getByText('Max Left Angle')).toBeInTheDocument();
     expect(screen.queryByText('Max Right Angle')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Protocol 4.*Oscillating/s }));
-    expect(screen.getByText('Max Left Angle')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Protocol 3.*Right Lateral/s }));
+    expect(screen.queryByText('Max Left Angle')).not.toBeInTheDocument();
     expect(screen.getByText('Max Right Angle')).toBeInTheDocument();
   });
 

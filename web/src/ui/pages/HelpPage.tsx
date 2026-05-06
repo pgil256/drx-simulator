@@ -22,8 +22,8 @@ export function HelpPage() {
               verify range and feel.
             </li>
             <li>
-              <span className="text-white">Protocols</span> runs one of four guided sequences:
-              axial, left lateral, right lateral, or oscillating.
+              <span className="text-white">Protocols</span> runs one of the guided production
+              sequences: axial, left lateral, or right lateral.
             </li>
             <li>
               The red <span className="text-white">E-Stop</span> in the top bar latches all motion;

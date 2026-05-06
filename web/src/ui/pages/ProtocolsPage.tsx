@@ -20,7 +20,6 @@ const PROTOCOLS: ProtocolDef[] = [
   { id: 1, name: 'Axial', blurb: 'Pressure ramp + hold.', needsLeft: false, needsRight: false },
   { id: 2, name: 'Left Lateral', blurb: 'Ramp, then tilt left.', needsLeft: true, needsRight: false },
   { id: 3, name: 'Right Lateral', blurb: 'Ramp, then tilt right.', needsLeft: false, needsRight: true },
-  { id: 4, name: 'Oscillating', blurb: 'Ramp, then swing L↔R.', needsLeft: true, needsRight: true },
 ];
 
 const PHASE_LABEL: Record<string, string> = {
@@ -29,7 +28,6 @@ const PHASE_LABEL: Record<string, string> = {
   positioning: 'Positioning',
   holding: 'Holding',
   pulsing: 'Pulsing',
-  oscillating: 'Oscillating',
   cooling: 'Cooling down',
   done: 'Complete',
 };

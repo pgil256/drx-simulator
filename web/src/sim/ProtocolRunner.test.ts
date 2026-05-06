@@ -123,26 +123,6 @@ describe('ProtocolRunner', () => {
     expect(useAppStore.getState().session.phase).toBe('holding');
   });
 
-  it('protocol 4 oscillates: switches direction after half-period', () => {
-    freshStore({ maxLeft: 10, maxRight: 10, durationSec: 60 });
-    const dev = new MockDevice();
-    const runner = new ProtocolRunner(dev);
-    runner.start(4);
-
-    pinPressureToTarget();
-    runner.tick(1);
-    expect(useAppStore.getState().session.phase).toBe('positioning');
-
-    pinLateralTo(-10);
-    runner.tick(1);
-    expect(useAppStore.getState().session.phase).toBe('oscillating');
-
-    const sentBefore = dev.sent.length;
-    runner.tick(10);
-    const newCmds = dev.sent.slice(sentBefore);
-    expect(newCmds).toContain('K 10');
-  });
-
   it('completes after duration: cools down then returns to idle', () => {
     freshStore({ durationSec: 5 });
     const dev = new MockDevice();

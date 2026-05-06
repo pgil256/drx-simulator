@@ -3,13 +3,10 @@ import type { SimulatedDevice } from './SimulatedDevice';
 
 const PRESSURE_TOLERANCE = 2;
 const ANGLE_TOLERANCE = 0.5;
-const OSCILLATION_HALF_PERIOD_SEC = 8;
 const COOLING_SEC = 1.5;
 
 export class ProtocolRunner {
   private device: Pick<SimulatedDevice, 'send'>;
-  private oscDir: 'left' | 'right' = 'left';
-  private nextSwitchSec = 0;
   private coolingStartedAtSec: number | null = null;
 
   constructor(device: Pick<SimulatedDevice, 'send'>) {
@@ -20,8 +17,6 @@ export class ProtocolRunner {
     const s = useAppStore.getState();
     if (s.device.eStop || s.session.runningProtocol != null) return;
 
-    this.oscDir = 'left';
-    this.nextSwitchSec = OSCILLATION_HALF_PERIOD_SEC;
     this.coolingStartedAtSec = null;
 
     s.setSession({
@@ -95,7 +90,6 @@ export class ProtocolRunner {
         const targetAngle = this.angleFor(id, s);
         const atAngle = Math.abs(s.device.lateral.pos - targetAngle) <= ANGLE_TOLERANCE;
         if (!atAngle) return 'positioning';
-        if (id === 4) return this.beginOscillating(s);
         return this.enterHoldOrPulse(s);
       }
 
@@ -103,18 +97,6 @@ export class ProtocolRunner {
       case 'pulsing':
         if (durationElapsed) return this.beginCooling(elapsedSec);
         return phase;
-
-      case 'oscillating':
-        if (durationElapsed) {
-          if (s.session.usePulse) this.device.send('JS');
-          return this.beginCooling(elapsedSec);
-        }
-        if (elapsedSec >= this.nextSwitchSec) {
-          this.oscDir = this.oscDir === 'left' ? 'right' : 'left';
-          this.device.send(`K ${Math.round(this.oscAngle(s))}`);
-          this.nextSwitchSec += OSCILLATION_HALF_PERIOD_SEC;
-        }
-        return 'oscillating';
 
       case 'cooling': {
         const startedAt = this.coolingStartedAtSec ?? elapsedSec;
@@ -133,12 +115,6 @@ export class ProtocolRunner {
   ): ProtocolPhase {
     this.device.send(`K ${Math.round(this.angleFor(id, s))}`);
     return 'positioning';
-  }
-
-  private beginOscillating(s: ReturnType<typeof useAppStore.getState>): ProtocolPhase {
-    if (s.session.usePulse) this.device.send('J');
-    this.nextSwitchSec = s.session.elapsedSec + OSCILLATION_HALF_PERIOD_SEC;
-    return 'oscillating';
   }
 
   private enterHoldOrPulse(s: ReturnType<typeof useAppStore.getState>): ProtocolPhase {
@@ -160,13 +136,6 @@ export class ProtocolRunner {
   private angleFor(id: ProtocolId, s: ReturnType<typeof useAppStore.getState>): number {
     if (id === 2) return -Math.abs(s.session.maxLeft);
     if (id === 3) return Math.abs(s.session.maxRight);
-    if (id === 4) return this.oscAngle(s);
     return 0;
-  }
-
-  private oscAngle(s: ReturnType<typeof useAppStore.getState>): number {
-    return this.oscDir === 'left'
-      ? -Math.abs(s.session.maxLeft)
-      : Math.abs(s.session.maxRight);
   }
 }

@@ -18,7 +18,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="h-16 shrink-0 flex items-stretch bg-black/40 backdrop-blur-md border-t border-white/10"
+      className="h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 flex items-stretch bg-black/40 backdrop-blur-md border-t border-white/10 pb-[env(safe-area-inset-bottom)]"
     >
       {TABS.map((tab) => {
         const active = page === tab.id;

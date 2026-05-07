@@ -39,7 +39,7 @@ export default function App() {
   }, [page]);
 
   return (
-    <div className="dark w-screen h-screen h-dvh bg-black text-white flex flex-col">
+    <div className="dark w-screen h-dvh bg-black text-white flex flex-col">
       <TopBar />
       <div className="flex-1 flex min-h-0 relative">
         <main className="flex-1 relative min-h-0 min-w-0">

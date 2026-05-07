@@ -3,8 +3,12 @@ import { Bounds, OrbitControls } from '@react-three/drei';
 import { Suspense, useEffect, useRef } from 'react';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { DeviceModel } from './DeviceModel';
+import { ChairVariants } from './ChairVariants';
 import { CAMERA_PRESETS } from './cameraPresets';
 import { useAppStore } from '../store/useAppStore';
+
+const SHOW_VARIANTS =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('variants');
 
 function CameraRig({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
   const { camera } = useThree();
@@ -45,7 +49,7 @@ export function Scene() {
         <directionalLight position={[3, 5, 3]} intensity={0.9} castShadow color="#ffffff" />
         <directionalLight position={[-3, 4, -2]} intensity={0.4} color="#ffffff" />
         <Bounds fit clip observe margin={1.2}>
-          <DeviceModel />
+          {SHOW_VARIANTS ? <ChairVariants /> : <DeviceModel />}
         </Bounds>
         <CameraRig controlsRef={controlsRef} />
         <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={0.08} />

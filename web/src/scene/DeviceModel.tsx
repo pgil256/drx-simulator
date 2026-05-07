@@ -20,6 +20,14 @@ function degToRad(deg: number) {
   return (deg * Math.PI) / 180;
 }
 
+function getModelNode(root: Object3D, ...names: string[]) {
+  for (const name of names) {
+    const node = root.getObjectByName(name);
+    if (node) return node;
+  }
+  return null;
+}
+
 export function DeviceModel() {
   const { scene } = useGLTF('/models/drx.glb');
 
@@ -55,7 +63,8 @@ export function DeviceModel() {
     // Stored on scene.userData so HMR / Strict-Mode re-mounts revert and
     // re-apply rather than stacking shifts on a cached scene.
     scene.updateMatrixWorld(true);
-    const trayBeforePivot = scene.getObjectByName('Traction tray:1') ?? axialRef.current;
+    const trayBeforePivot =
+      getModelNode(scene, 'Traction_tray1', 'Traction tray:1') ?? axialRef.current;
     const userData = scene.userData as {
       drxPivotDx?: number;
       drxAxialDx?: number;
@@ -74,7 +83,7 @@ export function DeviceModel() {
       axialRef.current.position.x += userData.drxPivotDx;
     }
     if (userData.drxChairDx !== undefined) {
-      const prevFrame = scene.getObjectByName('Chair Frame:1');
+      const prevFrame = getModelNode(scene, 'Chair_Frame1', 'Chair Frame:1');
       if (prevFrame) prevFrame.position.x -= userData.drxChairDx;
     }
     if (userData.drxBoomDx !== undefined) {
@@ -88,7 +97,7 @@ export function DeviceModel() {
     // boom (and its descendants — lateral_pivot, axial_slider, foot tray)
     // onto the chair's visible centerline puts the foot tray directly on
     // the patient's centerline like the reference renders.
-    const chairMeshNode = scene.getObjectByName('Chair:1');
+    const chairMeshNode = getModelNode(scene, 'Chair1', 'Chair:1');
     if (chairMeshNode) {
       const chairBox = new Box3();
       const chairTemp = new Box3();
@@ -119,7 +128,7 @@ export function DeviceModel() {
     // Only the ~180° Z rotation is intentional for orientation; the X/Y
     // tilts make the foot tray render at a slight angle vs the chair's
     // vertical axis. Idempotent on HMR (zero stays zero).
-    const trayNode = scene.getObjectByName('Traction tray:1');
+    const trayNode = getModelNode(scene, 'Traction_tray1', 'Traction tray:1');
     if (trayNode) {
       trayNode.rotation.x = 0;
       trayNode.rotation.y = 0;
@@ -178,7 +187,7 @@ export function DeviceModel() {
     // of the cradle GEOMETRIES (Bent_leg children of Chair_Frame1) gives
     // the true visual midline. Filter to direct children to avoid the
     // nested mesh-named 'Bent_leg_21' collision inside Bent_leg1.
-    const chairFrame = scene.getObjectByName('Chair Frame:1');
+    const chairFrame = getModelNode(scene, 'Chair_Frame1', 'Chair Frame:1');
     if (chairFrame) {
       const cradleBox = new Box3();
       const tempBox = new Box3();
@@ -195,7 +204,9 @@ export function DeviceModel() {
         for (const c of obj.children) expandByVisibleMesh(c);
       };
       for (const child of chairFrame.children) {
-        if (child.name.startsWith('Bent leg')) expandByVisibleMesh(child);
+        if (child.name.startsWith('Bent_leg') || child.name.startsWith('Bent leg')) {
+          expandByVisibleMesh(child);
+        }
       }
       if (!cradleBox.isEmpty()) {
         const cradleMidX = (cradleBox.min.x + cradleBox.max.x) / 2;
@@ -210,9 +221,13 @@ export function DeviceModel() {
     // electrical box as integrated parts of the device, so we keep them
     // visible. Idempotent — setting visible=false multiple times is fine.
     const HIDE_NAME_PREFIXES = [
+      'Hex_Cap_Screw',
       'Hex Cap Screw',
+      'Circular_Washer',
       'Circular Washer',
+      'Prevailing_Torque',
       'Prevailing Torque',
+      'Handle_bushing',
       'Handle bushing',
     ];
     scene.traverse((obj: Object3D) => {
@@ -263,7 +278,7 @@ export function DeviceModel() {
     // makes the glow visually align with where pressure is applied. The
     // chair-frame "Bent_leg" pieces are static structural cradles and are
     // intentionally not part of the glow.
-    const tray = scene.getObjectByName('Traction tray:1') ?? axialRef.current;
+    const tray = getModelNode(scene, 'Traction_tray1', 'Traction tray:1') ?? axialRef.current;
     const mats: MeshStandardMaterial[] = [];
     tray.traverse((obj: Object3D) => {
       const mesh = obj as Mesh;

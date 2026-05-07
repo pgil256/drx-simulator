@@ -21,6 +21,7 @@ describe('App mobile viewport layout', () => {
     await screen.findByTestId('scene');
 
     expect(container.firstElementChild).toHaveClass('h-dvh');
+    expect(container.firstElementChild).not.toHaveClass(['h', 'screen'].join('-'));
 
     const nav = screen.getByRole('navigation', { name: 'Primary' });
     expect(nav).toHaveClass('h-[calc(4rem+env(safe-area-inset-bottom))]');

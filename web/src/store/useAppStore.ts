@@ -29,7 +29,6 @@ type SessionState = {
 type UiState = {
   page: Page;
   setupTab: SetupTab;
-  videoOpen: boolean;
   cameraPreset: 'three-quarter' | 'side' | 'overhead';
 };
 
@@ -67,7 +66,6 @@ export const useAppStore = create<AppState>((set) => ({
   ui: {
     page: 'home',
     setupTab: 'axial',
-    videoOpen: false,
     cameraPreset: 'three-quarter',
   },
 

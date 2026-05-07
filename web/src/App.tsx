@@ -5,7 +5,6 @@ import { useAppStore } from './store/useAppStore';
 import { BottomNav } from './ui/BottomNav';
 import { PageRouter } from './ui/pages/PageRouter';
 import { TopBar } from './ui/TopBar';
-import { VideoDialog } from './ui/VideoDialog';
 
 const Scene = lazy(() => import('./scene/Scene').then((m) => ({ default: m.Scene })));
 
@@ -95,7 +94,6 @@ export default function App() {
         </aside>
       </div>
       <BottomNav />
-      <VideoDialog />
     </div>
   );
 }

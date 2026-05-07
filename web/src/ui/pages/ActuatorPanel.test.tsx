@@ -33,7 +33,7 @@ describe('ActuatorPanel', () => {
     render(<ActuatorPanel actuator="axial" />);
     expect(screen.getByText('Position')).toBeInTheDocument();
     expect(screen.getByText('Target: 0.0 in')).toBeInTheDocument();
-    expect(screen.getByText('Pressure')).toBeInTheDocument();
+    expect(screen.queryByText('Pressure')).not.toBeInTheDocument();
   });
 
   it('Forward nudges axial target by stepNormal (0.5 in)', async () => {
@@ -83,17 +83,6 @@ describe('ActuatorPanel', () => {
 
     await user.click(screen.getByRole('button', { name: 'Reset' }));
     expect(useAppStore.getState().device.axial.target).toBe(0);
-  });
-
-  it('Stop Pressure sends pressure target to 0', async () => {
-    const user = userEvent.setup();
-    useAppStore.setState((s) => ({
-      device: { ...s.device, pressure: { ...s.device.pressure, target: 30 } },
-    }));
-    render(<ActuatorPanel actuator="axial" />);
-
-    await user.click(screen.getByRole('button', { name: 'Stop Pressure' }));
-    expect(useAppStore.getState().device.pressure.target).toBe(0);
   });
 
   it('horizontal panel uses degrees', () => {

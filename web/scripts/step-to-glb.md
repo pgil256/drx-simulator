@@ -1,6 +1,6 @@
 # STEP → GLB Conversion
 
-Generates `public/models/drx.glb` from `drx-simulator/STEP Files/Full assembly.stp`.
+Generates `public/models/drx.glb` from `inventor_files/STEP Files (1)/Full assembly.stp`.
 
 One-time. Re-run only when CAD changes.
 
@@ -28,7 +28,7 @@ Output: `public/models/drx.glb`, ~2 MB.
 ## Requirements
 - Python 3.10+
 - Node.js 20+
-- `@gltf-transform/core` (already a dev dep via `npm install --no-save` inside the script)
+- `@gltf-transform/core` (tracked as a dev dependency)
 
 ## Alternate path (Blender, for manual tuning)
 

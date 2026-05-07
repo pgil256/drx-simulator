@@ -8,6 +8,14 @@ type Variant = { label: string; apply: ApplyMat };
 const isBlueColor = (c: Color) => c.b > c.r * 1.6 && c.b > c.g * 1.6 && c.b > 0.15;
 const isBlackColor = (c: Color) => c.r < 0.07 && c.g < 0.07 && c.b < 0.07;
 
+function getModelNode(root: Object3D, ...names: string[]) {
+  for (const name of names) {
+    const node = root.getObjectByName(name);
+    if (node) return node;
+  }
+  return null;
+}
+
 const VARIANTS: Variant[] = [
   { label: '1. Original', apply: () => {} },
   {
@@ -81,7 +89,7 @@ export function ChairVariants() {
   const { scene } = useGLTF('/models/drx.glb');
 
   const chairs = useMemo(() => {
-    const original = scene.getObjectByName('Chair:1');
+    const original = getModelNode(scene, 'Chair1', 'Chair:1');
     if (!original) return [];
     const total = VARIANTS.length;
     const startX = -((total - 1) * CHAIR_SPACING_M) / 2;

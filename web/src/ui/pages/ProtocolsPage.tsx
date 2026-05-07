@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { LIMITS } from '@/sim/types';
-import { protocolRunner, simDevice } from '@/sim/useSimTick';
+import { protocolRunner } from '@/sim/useSimTick';
 import { cn } from '@/lib/utils';
 import { useAppStore, type ProtocolId } from '@/store/useAppStore';
 import { PageShell } from './PageShell';
@@ -170,14 +170,6 @@ export function ProtocolsPage() {
               onClick={() => setSession({ usePulse: !session.usePulse })}
             >
               Pulse: {session.usePulse ? 'On' : 'Off'}
-            </Button>
-            <Button
-              variant={device.pulsing ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => simDevice.send(device.pulsing ? 'JS' : 'J')}
-              title="Toggle pulse on the model right now, no protocol needed"
-            >
-              {device.pulsing ? 'Stop Pulse' : 'Test Pulse'}
             </Button>
           </div>
           {!isRunning && (

@@ -1,7 +1,7 @@
 import { useAppStore } from '../store/useAppStore';
 import { parseCommand } from './parseCommand';
 import { stepActuator } from './step';
-import { LIMITS, SPEEDS } from './types';
+import { LIMITS, SPEEDS, pressureToAxialTarget } from './types';
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
@@ -26,7 +26,11 @@ export class SimulatedDevice {
         s.setLateralTarget(clamp(parsed.value, LIMITS.lateral.min, LIMITS.lateral.max));
         break;
       case 'pressure':
-        s.setPressureTarget(clamp(parsed.value, LIMITS.pressure.min, LIMITS.pressure.max));
+        {
+          const pressure = clamp(parsed.value, LIMITS.pressure.min, LIMITS.pressure.max);
+          s.setPressureTarget(pressure);
+          s.setAxialTarget(pressureToAxialTarget(pressure));
+        }
         break;
       case 'pulseStart':
         s.setPulsing(true);

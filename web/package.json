@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "inspect:glb": "node scripts/inspect-glb.mjs",
+    "inspect:motion": "node scripts/inspect-motion.mjs",
+    "capture:views": "node scripts/capture-browser-views.mjs",
+    "capture:motion": "node scripts/capture-motion-views.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
@@ -30,6 +34,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@gltf-transform/core": "^4.3.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -46,6 +51,7 @@
     "globals": "^17.5.0",
     "jsdom": "^29.0.2",
     "postcss": "^8.5.10",
+    "puppeteer-core": "^24.43.0",
     "tailwindcss": "^4.2.4",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",

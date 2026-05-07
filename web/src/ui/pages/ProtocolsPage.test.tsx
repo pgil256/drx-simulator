@@ -65,15 +65,11 @@ describe('ProtocolsPage', () => {
     expect(useAppStore.getState().session.usePulse).toBe(false);
   });
 
-  it('Test Pulse button toggles device.pulsing immediately', async () => {
-    const user = userEvent.setup();
+  it('does not render the model-only Test Pulse button', () => {
     render(<ProtocolsPage />);
 
-    await user.click(screen.getByRole('button', { name: 'Test Pulse' }));
-    expect(useAppStore.getState().device.pulsing).toBe(true);
-
-    await user.click(screen.getByRole('button', { name: 'Stop Pulse' }));
-    expect(useAppStore.getState().device.pulsing).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Test Pulse' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Stop Pulse' })).not.toBeInTheDocument();
   });
 
   it('Start Protocol sets running state and shows the running banner', async () => {

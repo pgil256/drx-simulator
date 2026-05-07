@@ -1,20 +1,41 @@
+/* eslint-disable react-hooks/immutability -- react-three-fiber scene objects are mutated imperatively. */
 import { useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
-import { Box3, Vector3 } from 'three';
-import type { Mesh, MeshStandardMaterial, Object3D } from 'three';
+import {
+  Box3,
+  BoxGeometry,
+  Matrix4,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  Quaternion,
+  Vector3,
+} from 'three';
+import type { Object3D } from 'three';
 import { useAppStore } from '../store/useAppStore';
+import { patientLateralDegToCadDeg } from './motionConventions';
 
 const PRESSURE_MAX_LBS = 80;
 const GLOW_MAX_INTENSITY = 0.8;
 const PULSE_HZ = 1.5;
-const PULSE_GLOW_AMPLITUDE = 2.0;
-
-// Rest-pose calibration: the GLB authors the leg tilted up from horizontal.
-// This offset makes horizontal.pos = -15 (the initial store value) render parallel to the ground.
-const HORIZONTAL_REST_CALIBRATION_DEG = 15;
+const PULSE_GLOW_AMPLITUDE = 0;
+const PULSE_AXIAL_AMPLITUDE_IN = 0.25;
 
 const IN_TO_M = 0.0254;
+
+const HIDE_NAME_PREFIXES = [
+  'Hex_Cap_Screw',
+  'Hex Cap Screw',
+  'Circular_Washer',
+  'Circular Washer',
+  'Prevailing_Torque',
+  'Prevailing Torque',
+  'Handle_bushing',
+  'Handle bushing',
+];
+
+const HIDE_EXACT_NAMES = ['Handle 3:1', 'Handle_31', 'Handle31'];
 
 function degToRad(deg: number) {
   return (deg * Math.PI) / 180;
@@ -28,6 +49,43 @@ function getModelNode(root: Object3D, ...names: string[]) {
   return null;
 }
 
+function getAxisFromUserData(obj: Object3D, fallback: Vector3) {
+  const raw = obj.userData.drxAxisLocal;
+  if (!Array.isArray(raw) || raw.length !== 3 || !raw.every((v) => Number.isFinite(v))) {
+    return fallback.clone();
+  }
+  const len = Math.hypot(raw[0], raw[1], raw[2]);
+  if (len === 0) return fallback.clone();
+  return new Vector3(raw[0] / len, raw[1] / len, raw[2] / len);
+}
+
+function removeSidePitch(axis: Vector3) {
+  const aligned = new Vector3(0, axis.y, axis.z);
+  if (aligned.lengthSq() < 1e-8) return axis.clone().normalize();
+  aligned.normalize();
+  return aligned.dot(axis) < 0 ? aligned.negate() : aligned;
+}
+
+function gapCoverQuaternion(axis: Vector3) {
+  const rail = axis.clone().normalize();
+  const width = new Vector3(1, 0, 0);
+  const normal = new Vector3().crossVectors(rail, width).normalize();
+  const matrix = new Matrix4().makeBasis(width, normal, rail);
+  return new Quaternion().setFromRotationMatrix(matrix);
+}
+
+function expandBoxInLocal(box: Box3, root: Object3D, parent: Object3D) {
+  const parentInverse = new Matrix4().copy(parent.matrixWorld).invert();
+  const tempBox = new Box3();
+  root.traverse((obj: Object3D) => {
+    const mesh = obj as Mesh;
+    if (!mesh.isMesh || !mesh.geometry) return;
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+    tempBox.copy(mesh.geometry.boundingBox!).applyMatrix4(mesh.matrixWorld).applyMatrix4(parentInverse);
+    box.union(tempBox);
+  });
+}
+
 export function DeviceModel() {
   const { scene } = useGLTF('/models/drx.glb');
 
@@ -35,12 +93,19 @@ export function DeviceModel() {
   const lateralRef = useRef<Object3D | null>(null);
   const horizontalRef = useRef<Object3D | null>(null);
 
-  const axialBaseZRef = useRef(0);
-  const lateralBaseYRef = useRef(0);
-  const horizontalBaseXRef = useRef(0);
+  const axialBasePosRef = useRef(new Vector3());
+  const axialAxisRef = useRef(new Vector3(0, 0, 1));
+  const lateralAxisRef = useRef(new Vector3(0, 1, 0));
+  const horizontalAxisRef = useRef(new Vector3(1, 0, 0));
+  const lateralBaseQuatRef = useRef(new Quaternion());
+  const horizontalBaseQuatRef = useRef(new Quaternion());
+  const lateralMotionQuatRef = useRef(new Quaternion());
+  const horizontalMotionQuatRef = useRef(new Quaternion());
+  const axialGapCoverRef = useRef<Mesh | null>(null);
+  const axialGapCoverBaseRef = useRef(new Vector3());
+  const axialGapCoverNormalRef = useRef(new Vector3(0, 1, 0));
 
   const strapMatsRef = useRef<MeshStandardMaterial[]>([]);
-  const alignmentAppliedRef = useRef(false);
 
   useEffect(() => {
     axialRef.current = scene.getObjectByName('axial_slider') ?? null;
@@ -54,233 +119,68 @@ export function DeviceModel() {
       return;
     }
 
-    // The GLB authors the chair frame and the actuator boom on different
-    // X axes. Real device photos show the chair, boom, and tray aligned
-    // on one axis, so we (a) shift lateral_pivot's rotation axis onto the
-    // tray, and (b) shift the chair (frame + upholstered seat together)
-    // so the cradle midline lands on the boom.
-    //
-    // Stored on scene.userData so HMR / Strict-Mode re-mounts revert and
-    // re-apply rather than stacking shifts on a cached scene.
+    const rawAxialAxis = getAxisFromUserData(axialRef.current, new Vector3(0, 0, 1));
+    const alignedAxialAxis = removeSidePitch(rawAxialAxis);
+    const footAlignment = new Quaternion().setFromUnitVectors(rawAxialAxis, alignedAxialAxis);
+    const footAlignmentApplied = Boolean(scene.userData.drxFootAlignmentApplied);
+
+    axialBasePosRef.current.copy(axialRef.current.position);
+    axialAxisRef.current.copy(alignedAxialAxis);
+    lateralAxisRef.current.copy(getAxisFromUserData(lateralRef.current, new Vector3(0, 1, 0)));
+    horizontalAxisRef.current.copy(getAxisFromUserData(horizontalRef.current, new Vector3(1, 0, 0)));
+    lateralBaseQuatRef.current.copy(lateralRef.current.quaternion);
+    horizontalBaseQuatRef.current.copy(horizontalRef.current.quaternion);
+
+    const tractionTray = getModelNode(scene, 'Traction_tray1', 'Traction tray:1');
+    const tractionBody = getModelNode(scene, 'Traction_body1', 'Traction body:1') ?? axialRef.current;
+    if (!footAlignmentApplied) {
+      tractionTray?.quaternion.premultiply(footAlignment);
+      axialRef.current.quaternion.premultiply(footAlignment);
+      scene.userData.drxFootAlignmentApplied = true;
+    }
+
+    const coverNormal = new Vector3(0, 1, 0)
+      .projectOnPlane(alignedAxialAxis)
+      .normalize();
+    if (coverNormal.lengthSq() < 1e-8) coverNormal.set(0, 1, 0);
+    axialGapCoverNormalRef.current.copy(coverNormal);
+    axialGapCoverBaseRef.current
+      .copy(axialBasePosRef.current)
+      .addScaledVector(alignedAxialAxis, 0.045)
+      .addScaledVector(coverNormal, 0.035);
     scene.updateMatrixWorld(true);
-    const trayBeforePivot =
-      getModelNode(scene, 'Traction_tray1', 'Traction tray:1') ?? axialRef.current;
-    const userData = scene.userData as {
-      drxPivotDx?: number;
-      drxAxialDx?: number;
-      drxChairDx?: number;
-      drxBoomDx?: number;
-    };
-
-    // Undo previous run's shifts (if any) before recomputing. Order matters:
-    // axial undo must come before pivot undo to mirror the apply order;
-    // boom undo must come before any reads of horizontal_pivot's world X.
-    if (userData.drxAxialDx !== undefined) {
-      axialRef.current.position.x -= userData.drxAxialDx;
-    }
-    if (userData.drxPivotDx !== undefined) {
-      lateralRef.current.position.x -= userData.drxPivotDx;
-      axialRef.current.position.x += userData.drxPivotDx;
-    }
-    if (userData.drxChairDx !== undefined) {
-      const prevFrame = getModelNode(scene, 'Chair_Frame1', 'Chair Frame:1');
-      if (prevFrame) prevFrame.position.x -= userData.drxChairDx;
-    }
-    if (userData.drxBoomDx !== undefined) {
-      horizontalRef.current.position.x -= userData.drxBoomDx;
-    }
-    scene.updateMatrixWorld(true);
-
-    // (b0) Align horizontal_pivot.x to Chair:1's VISUAL center. Chair:1's
-    // mesh geometry is authored ~0.137m to the LEFT of its origin, so the
-    // chair appears centered to the left of the boom axis. Shifting the
-    // boom (and its descendants — lateral_pivot, axial_slider, foot tray)
-    // onto the chair's visible centerline puts the foot tray directly on
-    // the patient's centerline like the reference renders.
-    const chairMeshNode = getModelNode(scene, 'Chair1', 'Chair:1');
-    if (chairMeshNode) {
-      const chairBox = new Box3();
-      const chairTemp = new Box3();
-      const expandChair = (obj: Object3D) => {
-        if (!obj.visible) return;
-        const m = obj as Mesh;
-        if (m.isMesh && m.geometry) {
-          if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
-          chairTemp.copy(m.geometry.boundingBox!);
-          m.updateWorldMatrix(true, false);
-          chairTemp.applyMatrix4(m.matrixWorld);
-          chairBox.union(chairTemp);
-        }
-        for (const c of obj.children) expandChair(c);
-      };
-      expandChair(chairMeshNode);
-      if (!chairBox.isEmpty()) {
-        const chairCenterX = (chairBox.min.x + chairBox.max.x) / 2;
-        const boomWorldX = new Vector3().setFromMatrixPosition(horizontalRef.current.matrixWorld).x;
-        const boomDx = chairCenterX - boomWorldX;
-        horizontalRef.current.position.x += boomDx;
-        userData.drxBoomDx = boomDx;
-        scene.updateMatrixWorld(true);
-      }
+    const footBox = new Box3();
+    expandBoxInLocal(footBox, tractionBody, lateralRef.current);
+    if (tractionTray) expandBoxInLocal(footBox, tractionTray, lateralRef.current);
+    if (!footBox.isEmpty()) {
+      axialGapCoverBaseRef.current.x = (footBox.min.x + footBox.max.x) / 2;
     }
 
-    // Zero the foot tray's authored X/Y rotation (~9° pitch / -6° yaw).
-    // Only the ~180° Z rotation is intentional for orientation; the X/Y
-    // tilts make the foot tray render at a slight angle vs the chair's
-    // vertical axis. Idempotent on HMR (zero stays zero).
-    const trayNode = getModelNode(scene, 'Traction_tray1', 'Traction tray:1');
-    if (trayNode) {
-      trayNode.rotation.x = 0;
-      trayNode.rotation.y = 0;
+    let gapCover = lateralRef.current.getObjectByName('axial_gap_cover') as Mesh | null;
+    if (!gapCover) {
+      gapCover = new Mesh(
+        new BoxGeometry(1, 1, 1),
+        new MeshBasicMaterial({ color: '#050505' }),
+      );
+      gapCover.name = 'axial_gap_cover';
+      gapCover.castShadow = true;
+      gapCover.receiveShadow = true;
+      lateralRef.current.add(gapCover);
     }
+    gapCover.quaternion.copy(gapCoverQuaternion(alignedAxialAxis));
+    axialGapCoverRef.current = gapCover;
 
-    const trayWorldX = new Vector3().setFromMatrixPosition(trayBeforePivot.matrixWorld).x;
-    const lateralWorldX = new Vector3().setFromMatrixPosition(lateralRef.current.matrixWorld).x;
-    const horizontalWorldX = new Vector3().setFromMatrixPosition(horizontalRef.current.matrixWorld).x;
-
-    // (a) align lateral_pivot.x with the tray's origin. axial_slider.x
-    // compensates so the tray's world X stays put.
-    const pivotAlignDx = trayWorldX - lateralWorldX;
-    lateralRef.current.position.x += pivotAlignDx;
-    axialRef.current.position.x -= pivotAlignDx;
-    userData.drxPivotDx = pivotAlignDx;
-
-    // (a2) Center the visible foot piece on the rod axis. The GLB has the
-    // tray + traction body geometry offset ~9cm from axial_slider's origin,
-    // so the rod axis (lateral_pivot.x) sits to one side of the visible
-    // foot platform. Shifting axial_slider.x by the bbox offset moves the
-    // visible rod+tray onto the rod axis. (The shift is in lateral_pivot's
-    // local frame — when lateral rotates, the foot piece swings symmetrically
-    // around lateral_pivot just like before; the rest pose just lands on
-    // the centerline.)
-    scene.updateMatrixWorld(true);
-    const axialMeshBox = new Box3();
-    const axialTempBox = new Box3();
-    const expandAxial = (obj: Object3D) => {
-      if (!obj.visible) return;
-      const m = obj as Mesh;
-      if (m.isMesh && m.geometry) {
-        if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
-        axialTempBox.copy(m.geometry.boundingBox!);
-        m.updateWorldMatrix(true, false);
-        axialTempBox.applyMatrix4(m.matrixWorld);
-        axialMeshBox.union(axialTempBox);
-      }
-      for (const c of obj.children) expandAxial(c);
-    };
-    expandAxial(axialRef.current);
-    if (!axialMeshBox.isEmpty()) {
-      const axialMidX = (axialMeshBox.min.x + axialMeshBox.max.x) / 2;
-      const lateralWorldXNow = new Vector3().setFromMatrixPosition(
-        lateralRef.current.matrixWorld,
-      ).x;
-      const axialDx = lateralWorldXNow - axialMidX;
-      axialRef.current.position.x += axialDx;
-      userData.drxAxialDx = axialDx;
-    }
-
-    // (b) Center the chair on the boom using the visible cradle bbox.
-    // Chair_Frame1 has a 180° Y rotation that flips its children's X
-    // direction — using cradle origins as the midline doesn't account for
-    // the geometry's asymmetric extension, so the visible chair appears
-    // off-center even when origins are aligned. Computing the bounding box
-    // of the cradle GEOMETRIES (Bent_leg children of Chair_Frame1) gives
-    // the true visual midline. Filter to direct children to avoid the
-    // nested mesh-named 'Bent_leg_21' collision inside Bent_leg1.
-    const chairFrame = getModelNode(scene, 'Chair_Frame1', 'Chair Frame:1');
-    if (chairFrame) {
-      const cradleBox = new Box3();
-      const tempBox = new Box3();
-      const expandByVisibleMesh = (obj: Object3D) => {
-        if (!obj.visible) return;
-        const m = obj as Mesh;
-        if (m.isMesh && m.geometry) {
-          if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
-          tempBox.copy(m.geometry.boundingBox!);
-          m.updateWorldMatrix(true, false);
-          tempBox.applyMatrix4(m.matrixWorld);
-          cradleBox.union(tempBox);
-        }
-        for (const c of obj.children) expandByVisibleMesh(c);
-      };
-      for (const child of chairFrame.children) {
-        if (child.name.startsWith('Bent_leg') || child.name.startsWith('Bent leg')) {
-          expandByVisibleMesh(child);
-        }
-      }
-      if (!cradleBox.isEmpty()) {
-        const cradleMidX = (cradleBox.min.x + cradleBox.max.x) / 2;
-        const chairDx = horizontalWorldX - cradleMidX;
-        chairFrame.position.x += chairDx;
-        userData.drxChairDx = chairDx;
-      }
-    }
-
-    // Hide only the small fasteners (hex screws, washers, nuts, bushings).
-    // The reference CAD renders show the wheels, handles, base housing, and
-    // electrical box as integrated parts of the device, so we keep them
-    // visible. Idempotent — setting visible=false multiple times is fine.
-    const HIDE_NAME_PREFIXES = [
-      'Hex_Cap_Screw',
-      'Hex Cap Screw',
-      'Circular_Washer',
-      'Circular Washer',
-      'Prevailing_Torque',
-      'Prevailing Torque',
-      'Handle_bushing',
-      'Handle bushing',
-    ];
     scene.traverse((obj: Object3D) => {
-      if (HIDE_NAME_PREFIXES.some((p) => obj.name.startsWith(p))) {
+      if (
+        HIDE_EXACT_NAMES.includes(obj.name) ||
+        HIDE_NAME_PREFIXES.some((prefix) => obj.name.startsWith(prefix))
+      ) {
         obj.visible = false;
       }
     });
 
-    // (c) Center the visible device on the world origin in X/Z so the
-    // OrbitControls target (which CameraRig sets to (0, 0.6, 0)) actually
-    // points at the model. Without this, the device sits ~0.4m off-axis
-    // from origin and reads as offset on phone-portrait viewports.
-    // Reset scene.position before computing the bbox so re-mounts on a
-    // cached scene don't compute a bbox that's already centered.
-    scene.position.x = 0;
-    scene.position.z = 0;
-    scene.updateMatrixWorld(true);
-    const finalBox = new Box3();
-    const finalTemp = new Box3();
-    const expandFinal = (obj: Object3D) => {
-      if (!obj.visible) return;
-      const m = obj as Mesh;
-      if (m.isMesh && m.geometry) {
-        if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
-        finalTemp.copy(m.geometry.boundingBox!);
-        m.updateWorldMatrix(true, false);
-        finalTemp.applyMatrix4(m.matrixWorld);
-        finalBox.union(finalTemp);
-      }
-      for (const c of obj.children) expandFinal(c);
-    };
-    expandFinal(scene);
-    if (!finalBox.isEmpty()) {
-      const cx = (finalBox.min.x + finalBox.max.x) / 2;
-      const cz = (finalBox.min.z + finalBox.max.z) / 2;
-      scene.position.x = -cx;
-      scene.position.z = -cz;
-    }
-
-    alignmentAppliedRef.current = true;
-
-    axialBaseZRef.current = axialRef.current.position.z;
-    lateralBaseYRef.current = lateralRef.current.rotation.y;
-    horizontalBaseXRef.current = horizontalRef.current.rotation.x;
-
-    // Pulse-glow effect: tint every mesh inside the foot tray (the moving
-    // piece where the cuff would press the patient's foot). Using the tray
-    // makes the glow visually align with where pressure is applied. The
-    // chair-frame "Bent_leg" pieces are static structural cradles and are
-    // intentionally not part of the glow.
-    const tray = getModelNode(scene, 'Traction_tray1', 'Traction tray:1') ?? axialRef.current;
     const mats: MeshStandardMaterial[] = [];
-    tray.traverse((obj: Object3D) => {
+    tractionBody.traverse((obj: Object3D) => {
       const mesh = obj as Mesh;
       if (!mesh.isMesh) return;
       const src = mesh.material as MeshStandardMaterial;
@@ -293,21 +193,46 @@ export function DeviceModel() {
     });
     strapMatsRef.current = mats;
     if (mats.length === 0) {
-      console.warn('DeviceModel: no tray meshes matched for glow effect');
+      console.warn('DeviceModel: no traction-body meshes matched for glow effect');
     }
   }, [scene]);
 
   useFrame((state) => {
     const d = useAppStore.getState().device;
     if (axialRef.current) {
-      axialRef.current.position.z = axialBaseZRef.current + d.axial.pos * IN_TO_M;
+      const jerkDelta = d.pulsing
+        ? Math.sin(state.clock.getElapsedTime() * 2 * Math.PI * PULSE_HZ) *
+          PULSE_AXIAL_AMPLITUDE_IN *
+          IN_TO_M
+        : 0;
+      const delta = d.axial.pos * IN_TO_M + jerkDelta;
+      const base = axialBasePosRef.current;
+      const axis = axialAxisRef.current;
+      axialRef.current.position.copy(base).addScaledVector(axis, delta);
+
+      if (axialGapCoverRef.current) {
+        const coverLength = Math.max(0.18, Math.abs(delta) + 0.32);
+        axialGapCoverRef.current.position
+          .copy(axialGapCoverBaseRef.current)
+          .addScaledVector(axis, delta / 2);
+        axialGapCoverRef.current.scale.set(0.16, 0.08, coverLength);
+      }
     }
     if (lateralRef.current) {
-      lateralRef.current.rotation.y = lateralBaseYRef.current + degToRad(d.lateral.pos);
+      const motion = lateralMotionQuatRef.current.setFromAxisAngle(
+        lateralAxisRef.current,
+        degToRad(patientLateralDegToCadDeg(d.lateral.pos)),
+      );
+      lateralRef.current.quaternion.copy(lateralBaseQuatRef.current).premultiply(motion);
     }
     if (horizontalRef.current) {
-      horizontalRef.current.rotation.x =
-        horizontalBaseXRef.current + degToRad(d.horizontal.pos + HORIZONTAL_REST_CALIBRATION_DEG);
+      // The horizontal UI value is the physical angle relative to parallel:
+      // negative values lower the base extension, positive values lift it.
+      const motion = horizontalMotionQuatRef.current.setFromAxisAngle(
+        horizontalAxisRef.current,
+        degToRad(-d.horizontal.pos),
+      );
+      horizontalRef.current.quaternion.copy(horizontalBaseQuatRef.current).premultiply(motion);
     }
 
     const pressureGlow = (d.pressure.lbs / PRESSURE_MAX_LBS) * GLOW_MAX_INTENSITY;
@@ -316,8 +241,6 @@ export function DeviceModel() {
       : 0;
     const intensity = pressureGlow + pulseT * PULSE_GLOW_AMPLITUDE;
     for (const mat of strapMatsRef.current) {
-      // Shift emissive toward yellow-white at pulse peaks so pulses look
-      // visually distinct from a steady pressure glow.
       mat.emissive.setRGB(1, pulseT * 0.85, pulseT * 0.45);
       mat.emissiveIntensity = intensity;
     }

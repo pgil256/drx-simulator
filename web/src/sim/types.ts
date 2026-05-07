@@ -34,6 +34,13 @@ export const LIMITS = {
   pressure: { min: 0, max: 80 },
 } as const;
 
+export function pressureToAxialTarget(lbs: number): number {
+  const pressureRange = LIMITS.pressure.max - LIMITS.pressure.min;
+  const axialRange = LIMITS.axial.max - LIMITS.axial.min;
+  const pressurePct = (lbs - LIMITS.pressure.min) / pressureRange;
+  return LIMITS.axial.min + pressurePct * axialRange;
+}
+
 export const SPEEDS = {
   axial: 1.0,
   horizontal: 30,

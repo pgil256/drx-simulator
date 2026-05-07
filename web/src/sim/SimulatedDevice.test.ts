@@ -23,6 +23,16 @@ describe('SimulatedDevice', () => {
     expect(useAppStore.getState().device.axial.target).toBe(0);
   });
 
+  it('maps pressure targets to axial distance targets', () => {
+    const dev = new SimulatedDevice();
+    dev.send('P40');
+    expect(useAppStore.getState().device.pressure.target).toBe(40);
+    expect(useAppStore.getState().device.axial.target).toBe(2);
+
+    dev.send('P80');
+    expect(useAppStore.getState().device.axial.target).toBe(4);
+  });
+
   it('latches eStop on X command and freezes motion', () => {
     const dev = new SimulatedDevice();
     dev.send('A12 2');

@@ -1,17 +1,14 @@
-import { HelpCircle, Home, ListOrdered, Sliders, Video, type LucideIcon } from 'lucide-react';
+import { HelpCircle, Home, ListOrdered, Sliders, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore, type Page } from '@/store/useAppStore';
 
-type Tab =
-  | { id: Page; label: string; icon: LucideIcon; kind: 'page' }
-  | { id: 'video'; label: string; icon: LucideIcon; kind: 'action' };
+type Tab = { id: Page; label: string; icon: LucideIcon };
 
 const TABS: Tab[] = [
-  { id: 'home', label: 'Home', icon: Home, kind: 'page' },
-  { id: 'setup', label: 'Setup', icon: Sliders, kind: 'page' },
-  { id: 'protocols', label: 'Protocols', icon: ListOrdered, kind: 'page' },
-  { id: 'help', label: 'Help', icon: HelpCircle, kind: 'page' },
-  { id: 'video', label: 'Video', icon: Video, kind: 'action' },
+  { id: 'home', label: 'Home', icon: Home },
+  { id: 'setup', label: 'Setup', icon: Sliders },
+  { id: 'protocols', label: 'Protocols', icon: ListOrdered },
+  { id: 'help', label: 'Help', icon: HelpCircle },
 ];
 
 export function BottomNav() {
@@ -24,17 +21,13 @@ export function BottomNav() {
       className="h-16 shrink-0 flex items-stretch bg-black/40 backdrop-blur-md border-t border-white/10"
     >
       {TABS.map((tab) => {
-        const active = tab.kind === 'page' && page === tab.id;
+        const active = page === tab.id;
         const Icon = tab.icon;
-        const handle = () => {
-          if (tab.kind === 'action') setUi({ videoOpen: true });
-          else setUi({ page: tab.id });
-        };
         return (
           <button
             key={tab.id}
             type="button"
-            onClick={handle}
+            onClick={() => setUi({ page: tab.id })}
             aria-current={active ? 'page' : undefined}
             className={cn(
               'flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 px-1',

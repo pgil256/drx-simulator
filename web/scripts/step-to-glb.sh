@@ -7,13 +7,18 @@
 set -euo pipefail
 
 WEB_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-REPO_ROOT="$(cd "$WEB_DIR/../.." && pwd)"
-STEP_FILE="$REPO_ROOT/drx-simulator/STEP Files/Full assembly.stp"
+REPO_ROOT="$(cd "$WEB_DIR/.." && pwd)"
+STEP_FILE="$REPO_ROOT/inventor_files/STEP Files (1)/Full assembly.stp"
 VENV="$WEB_DIR/.venv-cad"
 RAW_GLB="$WEB_DIR/public/models/drx-raw.glb"
 OUT_GLB="$WEB_DIR/public/models/drx.glb"
 
 mkdir -p "$WEB_DIR/public/models"
+
+if [ ! -f "$STEP_FILE" ]; then
+  echo "Missing STEP source: $STEP_FILE" >&2
+  exit 1
+fi
 
 if [ ! -d "$VENV" ]; then
   echo "Creating Python venv for cascadio..."
